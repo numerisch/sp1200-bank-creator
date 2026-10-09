@@ -1,5 +1,8 @@
 # SP-1200 Bank Creator
 
+<img width="1392" height="1024" alt="SP1200BankCreator" src="https://github.com/user-attachments/assets/1cdb7f10-c5a8-4e89-bb22-296ef994d4b8" />
+
+
 A free, open-source macOS kit editor for the Rossum SP-1200 `.sp12` format.
 Developed by Numerisch GmbH. Requires **macOS 13 or later**; Universal builds
 support Apple Silicon and Intel.
