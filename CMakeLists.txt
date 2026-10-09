@@ -1,7 +1,10 @@
 cmake_minimum_required(VERSION 3.22)
-project(SP1200BankCreator VERSION 1.10.2 LANGUAGES C CXX)
+# Set the deployment target before project() initializes the macOS toolchain.
+if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS" FORCE)
+endif()
+project(SP1200BankCreator VERSION 1.10.3 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS")
 include(FetchContent)
 FetchContent_Declare(JUCE GIT_REPOSITORY https://github.com/juce-framework/JUCE.git GIT_TAG 8.0.9 GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(JUCE)

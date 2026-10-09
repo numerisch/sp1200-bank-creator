@@ -23,10 +23,11 @@ transfer, sequencer editing and analog output-filter emulation are not included.
 
 ## Download
 
-Website releases will be free of charge and signed and notarized with Numerisch's
-Developer ID. Each published app download must include a link to the matching
-complete source archive. No public download or repository URL has been configured
-yet; locally built apps are development builds and are not notarized releases.
+Downloads are published free of charge through
+[GitHub Releases](https://github.com/numerisch/sp1200-bank-creator/releases).
+Each release includes a Developer ID-signed and Apple-notarized macOS DMG and
+the matching complete source archive, including JUCE. Until a release is
+published, build the app from source using the instructions below.
 
 ## Build
 
@@ -54,7 +55,7 @@ build from these without downloading JUCE, add
 - `DemoBanks/EMPTY_.sp12`: the maintainer's self-created empty export template.
 - `tests/`: synthetic codec, processing, mapping, persistence and UI regressions.
 - `LICENSES/`: retained third-party notices.
-- `docs/RELEASING.md`: source packaging and website release instructions.
+- `docs/RELEASING.md`: source packaging and GitHub release instructions.
 - `tools/prepare_public_repo.py`: creates a publication snapshot from an allowlist.
 
 Core tests use generated signals and a synthetic codec fixture. The instrument

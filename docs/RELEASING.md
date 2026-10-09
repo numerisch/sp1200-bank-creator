@@ -1,8 +1,8 @@
-# Website Releases
+# GitHub Releases
 
 This project is distributed free of charge under AGPLv3 by Numerisch GmbH.
-The public repository is named `sp1200-bank-creator`. Its GitHub owner and URL
-must be set when the repository is created; they are not assumed here.
+The public repository is https://github.com/numerisch/sp1200-bank-creator.
+Binary downloads are published exclusively through GitHub Releases.
 
 ## Public Repository
 
@@ -33,7 +33,7 @@ are supplemental; the public suite works without private captures.
 
 ## Signing and Notarization
 
-Use Numerisch's Apple Developer team. Website downloads require a **Developer
+Use Numerisch's Apple Developer team. Direct downloads require a **Developer
 ID Application** certificate. **Apple Distribution** is an App Store identity
 and must not be used for this release. App Sandbox is not required for direct
 distribution; enable Hardened Runtime for the signed release.
@@ -72,8 +72,8 @@ cmake --build build -j 6
 ctest --test-dir build --output-on-failure
 ```
 
-Place the DMG and corresponding source archive next to each other on the
-download page. Include the version, minimum macOS version, license, repository
+Attach the DMG and corresponding source archive to the same GitHub Release,
+tagged at the exact source revision used for the build. Include the version, minimum macOS version, license, repository
 link and SHA-256 checksums. Users can build and redistribute modified versions
 under AGPLv3; signing is a separate distribution step, not a prerequisite for
 building or testing the source.
