@@ -1,0 +1,9 @@
+* text=auto
+
+# Preserve upstream license copies verbatim, including their line endings.
+LICENSE -text
+LICENSES/* -text -whitespace
+
+*.sp12 binary
+*.png binary
+*.icns binary

@@ -1,0 +1,49 @@
+# macOS metadata
+.DS_Store
+._*
+.Spotlight-V100/
+.Trashes/
+
+# CMake / JUCE build products
+/build*/
+/cmake-build-*/
+/CMakeFiles/
+/CMakeCache.txt
+/cmake_install.cmake
+/CTestTestfile.cmake
+/Testing/
+/Makefile
+/*_artefacts/
+*.app/
+*.dSYM/
+CMakeUserPresets.json
+
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local samples, generated exports and research scratch files
+/kits/
+/output/
+/tmp/
+
+# Locally supplied firmware and vendor manuals
+/firmware/
+/docs/*.pdf
+
+# Local editor state and credentials
+.idea/
+*.swp
+*.swo
+*~
+.env
+.env.*
+!.env.example
+*.local
