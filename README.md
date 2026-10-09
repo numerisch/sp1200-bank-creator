@@ -26,8 +26,8 @@ transfer, sequencer editing and analog output-filter emulation are not included.
 Downloads are published free of charge through
 [GitHub Releases](https://github.com/numerisch/sp1200-bank-creator/releases).
 Each release includes a Developer ID-signed and Apple-notarized macOS DMG and
-the matching complete source archive, including JUCE. Until a release is
-published, build the app from source using the instructions below.
+the matching complete source archive, including JUCE. [Download the macOS app](https://github.com/numerisch/sp1200-bank-creator/releases/latest).
+Open the DMG and drag the app into Applications.
 
 ## Build
 
