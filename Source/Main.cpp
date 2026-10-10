@@ -1501,26 +1501,56 @@ void PadButton::itemDropped(const SourceDetails &s) {
 class HelpWindow : public DocumentWindow {
 public:
   HelpWindow(const String &title = "SP-1200 Bank Creator Help",
-             const String &text = String::fromUTF8(appInfo::quickGuide))
+             const String &text = String::fromUTF8(appInfo::quickGuide),
+             bool formatGuide = true)
       : DocumentWindow(title, spStyle::panel,
                        DocumentWindow::closeButton) {
     setUsingNativeTitleBar(true);
     auto *guide = new TextEditor();
     guide->setMultiLine(true, true);
-    guide->setReadOnly(true);
     guide->setScrollbarsShown(true);
     guide->setCaretVisible(false);
-    guide->setFont(spStyle::body(15));
+    guide->setFont(spStyle::body(formatGuide ? 17 : 15));
+    guide->setLineSpacing(formatGuide ? 1.3f : 1.15f);
     guide->setColour(TextEditor::backgroundColourId, spStyle::panel);
     guide->setColour(TextEditor::textColourId, spStyle::ivory);
-    guide->setIndents(18, 18);
-    guide->setText(text, false);
+    guide->setIndents(26, 24);
+    if (formatGuide) {
+      for (auto line : StringArray::fromLines(text)) {
+        const bool heading = line.startsWith("# ") || line.startsWith("## ");
+        const bool titleLine = line.startsWith("# ");
+        const auto font = heading
+                              ? spStyle::body(titleLine ? 25 : 20).boldened()
+                              : spStyle::body(17);
+        if (heading)
+          line = line.substring(titleLine ? 2 : 3);
+        int position = 0;
+        while (position < line.length()) {
+          const int start = line.indexOfChar(position, '*');
+          const int end = start >= 0 ? line.indexOfChar(start + 1, '*') : -1;
+          guide->setFont(font);
+          if (end < 0) {
+            guide->insertTextAtCaret(line.substring(position));
+            break;
+          }
+          guide->insertTextAtCaret(line.substring(position, start));
+          guide->setFont(font.italicised());
+          guide->insertTextAtCaret(line.substring(start + 1, end));
+          position = end + 1;
+        }
+        guide->setFont(font);
+        guide->insertTextAtCaret("\n");
+      }
+    } else {
+      guide->setText(text, false);
+    }
+    guide->setReadOnly(true);
     guide->setCaretPosition(0);
-    guide->setSize(700, 620);
+    guide->setSize(760, 680);
     setContentOwned(guide, true);
     setResizable(true, false);
     setResizeLimits(460, 320, 1200, 1000);
-    centreWithSize(700, 620);
+    centreWithSize(760, 680);
   }
   void closeButtonPressed() override { setVisible(false); }
 };
@@ -1757,6 +1787,7 @@ public:
           "SP-1200 Bank Creator\nVersion " +
               JUCEApplication::getInstance()->getApplicationVersion() + "\n\n" +
               String::fromUTF8(appInfo::copyright) + "\n\n" +
+              String::fromUTF8(appInfo::repository) + "\n\n" +
               String::fromUTF8(appInfo::licenseNotice) + "\n\nLegal\n" +
               String::fromUTF8(appInfo::legalNotice),
           "OK");
@@ -1764,7 +1795,8 @@ public:
     case showLicense:
       if (!licenseWindow)
         licenseWindow = std::make_unique<HelpWindow>(
-            "License", String::fromUTF8(AppLegal::LICENSE, AppLegal::LICENSESize));
+            "License", String::fromUTF8(AppLegal::LICENSE, AppLegal::LICENSESize),
+            false);
       licenseWindow->setVisible(true);
       licenseWindow->toFront(true);
       return true;
@@ -1856,6 +1888,7 @@ public:
         setApplicationReturnValue(1);
       fileMenu->perform(
           ApplicationCommandTarget::InvocationInfo(AppMenu::showHelp));
+      writeHelpSnapshot();
       fileMenu->perform(
           ApplicationCommandTarget::InvocationInfo(AppMenu::showLicense));
       Timer::callAfterDelay(200, [] { JUCEApplication::quit(); });

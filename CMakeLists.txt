@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.22)
 if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS" FORCE)
 endif()
-project(SP1200BankCreator VERSION 1.10.3 LANGUAGES C CXX)
+project(SP1200BankCreator VERSION 1.10.5 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 include(FetchContent)
 FetchContent_Declare(JUCE GIT_REPOSITORY https://github.com/juce-framework/JUCE.git GIT_TAG 8.0.9 GIT_SHALLOW TRUE)
@@ -16,7 +16,7 @@ target_compile_definitions(SampleCore PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 
 target_link_libraries(SampleCore PUBLIC juce::juce_audio_utils juce::juce_cryptography BankTemplate)
 juce_add_gui_app(SP1200BankCreator PRODUCT_NAME "SP-1200 Bank Creator" BUNDLE_ID "com.sp1200.sampletool"
     ICON_BIG Assets/AppIcon.png ICON_SMALL Assets/AppIcon.png
-    COMPANY_NAME "Numerisch GmbH" COMPANY_COPYRIGHT "Copyright © 2026 Numerisch GmbH")
+    COMPANY_NAME "Numerisch GmbH" COMPANY_COPYRIGHT "Copyright © 2026 Knut Schade / Numerisch GmbH")
 target_sources(SP1200BankCreator PRIVATE Source/Main.cpp Source/HelpContent.h Source/Theme.h Source/AppPreferences.h)
 target_sources(SP1200BankCreator PRIVATE LICENSE THIRD_PARTY_NOTICES.md)
 set_source_files_properties(LICENSE THIRD_PARTY_NOTICES.md PROPERTIES

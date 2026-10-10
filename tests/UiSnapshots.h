@@ -1,6 +1,27 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright © 2026 Numerisch GmbH
 
+static void writeHelpSnapshot() {
+  const auto destination =
+      SystemStats::getEnvironmentVariable("SP_UI_SNAPSHOT_DIR", {});
+  if (destination.isEmpty())
+    return;
+  auto &desktop = Desktop::getInstance();
+  for (int i = 0; i < desktop.getNumComponents(); ++i) {
+    auto *window = dynamic_cast<DocumentWindow *>(desktop.getComponent(i));
+    if (!window || window->getName() != "SP-1200 Bank Creator Help")
+      continue;
+    auto *content = window->getContentComponent();
+    if (!content)
+      continue;
+    FileOutputStream stream(File(destination).getChildFile("help.png"));
+    stream.setPosition(0);
+    stream.truncate();
+    PNGImageFormat().writeImageToStream(
+        content->createComponentSnapshot(content->getLocalBounds()), stream);
+  }
+}
+
 #pragma once
 
 // Optional visual QA during --smoke-test; no files are read/written by default.

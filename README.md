@@ -69,7 +69,7 @@ UI and require a macOS graphical session.
 
 ## License
 
-Copyright © 2026 Numerisch GmbH
+Copyright © 2026 Knut Schade / Numerisch GmbH
 
 The original project is licensed under **GNU AGPLv3 only** (`AGPL-3.0-only`).
 You may use, modify and redistribute it under that license, including commercially.

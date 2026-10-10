@@ -1,6 +1,6 @@
 # Licensing
 
-Copyright © 2026 Numerisch GmbH
+Copyright © 2026 Knut Schade / Numerisch GmbH
 
 The original SP-1200 Bank Creator application code, build scripts, tests,
 documentation and original artwork are licensed under the GNU Affero General
