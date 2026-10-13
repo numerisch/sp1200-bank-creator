@@ -309,7 +309,7 @@ public:
   TextButton import{"Import Sample Folder"}, exportBank{"Export SP-1200 Bank"},
       stop{"Stop Sound"}, remove{"Clear Pad"}, reverse{"Reverse"},
       clearAll{"Clear All"}, resetTrimButton{"Reset Trim"}, loop{"Loop Off"};
-  ToggleButton tune{"Pitch Fit"}, sort{"Auto Map"}, reset{"Auto Trim"};
+  ToggleButton tune{"Pitch Fit"}, sort{"Auto Drum Map"}, reset{"Auto Trim"};
   ComboBox channel;
   TextEditor name;
   Slider threshold;
@@ -509,7 +509,8 @@ public:
       changed();
     };
     sort.setTooltip(
-        "On: map by instrument and show the target instruments on pads.\n"
+        "On: map drum samples by filename and show the target instruments on "
+        "pads.\n"
         "Off: restore the previous layout and hide instrument labels.\n"
         "Sound edits stay with their assignments. New assignments fill free "
         "pads; cleared or replaced assignments stay removed.");
@@ -1390,9 +1391,9 @@ public:
   void resized() override {
     auto bounds = getLocalBounds().reduced(20);
     auto toolbar = bounds.removeFromTop(36);
-    threshold.setBounds(toolbar.removeFromRight(240).reduced(3));
+    threshold.setBounds(toolbar.removeFromRight(220).reduced(3));
     reset.setBounds(toolbar.removeFromRight(110).reduced(3));
-    sort.setBounds(toolbar.removeFromRight(110).reduced(3));
+    sort.setBounds(toolbar.removeFromRight(150).reduced(3));
     tune.setBounds(toolbar.removeFromRight(110).reduced(3));
     for (auto *b : {&import, &exportBank})
       b->setBounds(toolbar.removeFromLeft(180).reduced(3));

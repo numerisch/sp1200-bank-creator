@@ -125,7 +125,7 @@ void sortPads(Project &);
 void setAutoMap(Project &, bool enabled);
 void syncAutoMapRestore(Project &);
 void retainMappedAssignment(Project &, int padIndex);
-// Worker-only: update custom loops on assignments hidden by Auto Map.
+// Worker-only: update custom loops on assignments hidden by Auto Drum Map.
 void clampAutoMapRestoreLoops(Project &);
 void clearPad(Project &, int padIndex);
 void assignPad(Project &, int padIndex, const Asset &);

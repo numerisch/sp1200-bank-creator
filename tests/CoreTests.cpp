@@ -197,7 +197,7 @@ static void testReversibleAutoMap() {
         "Mapping preserves all pad edits and uses the first duplicate");
   check(cache.render(kit, sp::planBank(kit), 0).values == rendered.values &&
             cache.renderCount() == 1,
-        "Moving a sound through Auto Map reuses cached DSP");
+        "Moving a sound through Auto Drum Map reuses cached DSP");
   check(sp::padInstrument(kit, 4) == "Closed Hi-Hat" &&
             kit.pads[4].asset.isEmpty() &&
             sp::padInstrument(kit, 15) == "Cowbell" &&
@@ -286,7 +286,7 @@ static void testReversibleAutoMap() {
                      [&](auto &pad) {
                        return pad.assignmentId == full[31].assignmentId;
                      }),
-        "Auto Map can temporarily displace an original assignment");
+        "Auto Drum Map can temporarily displace an original assignment");
   sp::appendSamples(overflow, {tone("SD new.wav", .7)});
   sp::savePreset(overflow, file);
   restored = sp::loadPreset(file);
@@ -382,7 +382,7 @@ static void testReversibleAutoMap() {
             !overflow.autoMapRestore,
         "Clear All removes both layouts so Off never resurrects assignments");
   dir.deleteRecursively();
-  std::cout << "PASS: reversible Auto Map, labels, edits, duplicates, hidden "
+  std::cout << "PASS: reversible Auto Drum Map, labels, edits, duplicates, hidden "
                "cuts/loops, additions, removals, overflow and portable kits\n";
 }
 static void testLazyRendering() {
@@ -770,6 +770,86 @@ static void benchmarkLoopUpdates() {
   std::cout << "Resamplings: " << cache.renderCount()
             << ", checksum: " << checksum << "\n";
 }
+static void testDrumInstrumentAliases() {
+  const std::pair<const char *, const char *> aliases[] = {
+      {"KickEQ", "BD"},       {"KickCleanT", "BD"},
+      {"KickCleanD", "BD"},   {"KickHardT", "BD"},
+      {"KickHardD", "BD"},    {"KickFiltT", "BD"},
+      {"KickFiltD", "BD"},    {"KickAirD", "BD"},
+      {"KickTwists", "BD"},   {"KickTwistsEQ", "BD"},
+      {"KickBit", "BD"},      {"KickCrush2", "BD"},
+      {"KickDirt2", "BD"},    {"KickEcho", "BD"},
+      {"KickHi", "BD"},       {"KickHP", "BD"},
+      {"KickRound", "BD"},    {"KickWooly2", "BD"},
+      {"01Kick", "BD"},       {"Bass Drum", "BD"},
+      {"SnareCln", "SD"},     {"SnareSat", "SD"},
+      {"SnareCrush", "SD"},   {"SnareCrushHi", "SD"},
+      {"SnareCrushLo", "SD"}, {"SnareB", "SD"},
+      {"Snare1", "SD"},       {"Snare2", "SD"},
+      {"HHCH", "CH"},         {"HHCHTP", "CH"},
+      {"HHCrush", "CH"},      {"CH2", "CH"},
+      {"CH1A", "CH"},         {"CH5B", "CH"},
+      {"CHREV", "CH"},        {"CHRev2", "CH"},
+      {"CHHi", "CH"},         {"CHTin2", "CH"},
+      {"CHMultiple", "CH"},   {"CHGlitch", "CH"},
+      {"HHOH", "OH"},         {"HHOHTP", "OH"},
+      {"OHLo", "OH"},         {"OHHi", "OH"},
+      {"OHCym", "OH"},        {"HandClap", "Clap"},
+      {"ClapWet", "Clap"},    {"ClapCrush", "Clap"},
+      {"ClapLo", "Clap"},     {"ClapMid", "Clap"},
+      {"Clap1B", "Clap"},     {"Snap", "Clap"},
+      {"Snaps", "Clap"},      {"Snap2", "Clap"},
+      {"Snap5Glitch", "Clap"}, {"Woodblock", "Rim"},
+      {"Wood Block", "Rim"},  {"Clave", "Rim"},
+      {"Block", "Rim"},       {"Splash", "Crash"},
+      {"Claves", "Rim"},      {"Cowb", "Cowbell"},
+      {"CowB", "Cowbell"},    {"Shake", "Shaker"},
+      {"Maraca", "Shaker"},   {"Maracas", "Shaker"},
+      {"ShakerRev", "Shaker"}, {"Tambo", "Tamb"},
+      {"TomHiTnd", "High Tom"}, {"TomHiPB", "High Tom"},
+      {"TomLoPB", "Low Tom"},   {"TomLoTnd", "Low Tom"},
+      {"TomLow", "Low Tom"},    {"TomMid", "Mid Tom"}};
+  for (const auto &[name, expected] : aliases) {
+    check(sp::classify(name) == expected,
+          (String("Drum alias: ") + name).toRawUTF8());
+    const auto filename = String("Kit_") + String(name).toLowerCase() + "-01";
+    check(sp::classify(filename) == expected,
+          ("Case-insensitive filename alias: " + filename).toRawUTF8());
+  }
+  for (const auto *name : {"Bass SDS800", "Bass_Lindrum", "Synth Bass",
+                           "SS Lindrum", "MA Jupiter", "TomLoKick",
+                           "TomLoKickEQ", "MyKickEQish", "Kickish",
+                           "Snareish", "MyHHCHish", "Chime", "Chimes",
+                           "Chirp", "Chord", "Chorus", "Church",
+                           "MyWoodblockish", "MyBlockish", "Blocked",
+                           "Splashy", "MySplashish", "MyClaveish", "Snapshot",
+                           "MyCowbish", "MyMaracasish", "MyTomHiTndish"})
+    check(sp::classify(name) == "Other",
+          (String("Unapproved alias or partial word: ") + name).toRawUTF8());
+  check(sp::classify("SD Woodblock") == "Rim" &&
+            sp::classify("Perc Clave") == "Rim" &&
+            sp::classify("SD Snap") == "SD" &&
+            sp::classify("BD Shake") == "BD",
+        "Specific Rim aliases and primary drum labels keep their priority");
+
+  sp::Project kit;
+  const std::pair<const char *, int> pads[] = {
+      {"KickEQ-606_A_01.wav", 0}, {"SnareCln-606_A_01.wav", 1},
+      {"Snap_Factory_SP1200_03.wav", 2}, {"Block Vinyl MPC60 01.wav", 3},
+      {"HHCHTP-606_01.wav", 4}, {"HHOH-606_01.wav", 5},
+      {"Splash MPC3000 Real 04.wav", 7},
+      {"TomLoPB-606_A_01.wav", 8}, {"TomMid-MO.wav", 9},
+      {"TomHiTnd-606_A_01.wav", 10}, {"Maracas 727 Clean.wav", 13},
+      {"Tambo_Lindrum_01.wav", 14}, {"CowB_Factory_SP1200_08.wav", 15}};
+  for (const auto &[filename, index] : pads)
+    kit.pool.push_back(tone(filename, .01));
+  sp::setAutoMap(kit, true);
+  for (size_t i = 0; i < std::size(pads); ++i)
+    check(kit.pads[pads[i].second].asset == kit.pool[i]->id,
+          (String("Decoded drum alias maps to ") + sp::padName(pads[i].second))
+              .toRawUTF8());
+  std::cout << "PASS: drum aliases, numbering, token boundaries and pad mapping\n";
+}
 static int auditInstrumentNames(bool test) {
   const auto lines = StringArray::fromLines(
       File(PROJECT_ROOT)
@@ -1078,6 +1158,7 @@ int main(int argc, char **argv) {
   if (argc == 2 && String(argv[1]) == "--audit-instruments")
     return auditInstrumentNames(false);
   try {
+    testDrumInstrumentAliases();
     testMirroredAutoMap();
     testReversibleAutoMap();
     testExportSettings();
@@ -1131,15 +1212,25 @@ int main(int argc, char **argv) {
     check(sp::classify("BD-Rock_01") == "BD", "Kick alias");
     check(sp::classify("Closed_HH-02") == "CH", "Closed hat");
     check(sp::classify("open-HH") == "OH", "Open hat");
+    check(sp::classify("HANDCL") == "Clap" &&
+              sp::classify("handcl") == "Clap" &&
+              sp::classify("Kit_hAnDcL-01") == "Clap",
+          "HANDCL recognizes clap regardless of case and filename separators");
+    check(sp::classify("MyHANDCLish") == "Other",
+          "HANDCL recognition preserves token boundaries");
     sp::Project aliases;
     aliases.pool = {tone("Kit_hHo_01.wav"), tone("Kit_CYM_01.wav"),
-                    tone("Kit_CYM_Ride.wav")};
+                    tone("Kit_CYM_Ride.wav"), tone("HANDCL_01.wav"),
+                    tone("HANDCL_02.wav")};
     sp::sortPads(aliases);
     check(
         aliases.pads[5].asset == aliases.pool[0]->id &&
             aliases.pads[7].asset == aliases.pool[1]->id &&
             aliases.pads[6].asset == aliases.pool[2]->id,
         "New HHO/CYM aliases map to A6/A8, with explicit Ride taking priority");
+    check(aliases.pads[2].asset == aliases.pool[3]->id &&
+              aliases.pads[18].asset == aliases.pool[4]->id,
+          "Decoded HANDCL samples map to Clap pads A3 and C3");
     check(sp::classify("MyHHOish_MyCYMish") == "Other",
           "HHO/CYM recognition preserves token boundaries");
     check(sp::classify("tom_high") == "High Tom", "Tom pitch");
@@ -1736,7 +1827,7 @@ int main(int argc, char **argv) {
     check(restored.bankName == "First Kit",
           "Bank name survives preset roundtrip");
     check(!restored.autoTune, "Pitch Fit mode survives preset roundtrip");
-    check(!restored.autoSort, "Auto Map mode survives preset roundtrip");
+    check(!restored.autoSort, "Auto Drum Map mode survives preset roundtrip");
     check(!restored.autoTrim, "Manual trim mode survives preset roundtrip");
     check(restored.pads[0].reverse && restored.pads[0].manualTrim,
           "Reverse and manual protection survive version 7 preset roundtrip");
@@ -1866,7 +1957,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < 32; ++i)
       check(sp::assetFor(sequential, sequential.pads[i].asset)->filename ==
                 File(sequentialPaths[i]).getFileName(),
-            "Auto Map Off fills pads in supplied import order");
+            "Auto Drum Map Off fills pads in supplied import order");
     sequential.autoSort = true;
     sp::sortPads(sequential);
     check(sp::assetFor(sequential, sequential.pads[0].asset)->filename ==
@@ -1875,7 +1966,7 @@ int main(int argc, char **argv) {
                   "SD.wav" &&
               sp::assetFor(sequential, sequential.pads[5].asset)->filename ==
                   "OH.wav",
-          "Enabling Auto Map classifies an already imported kit");
+          "Enabling Auto Drum Map classifies an already imported kit");
     const auto sortedImport =
         sp::importFiles(sequentialPaths, orderWarnings, true);
     for (int i = 0; i < 32; ++i) {
@@ -1883,7 +1974,7 @@ int main(int argc, char **argv) {
       auto after = sp::assetFor(sequential, sequential.pads[i].asset);
       check((!before && !after) ||
                 (before && after && before->relative == after->relative),
-            "Sorting after import matches Auto Map On import");
+            "Sorting after import matches Auto Drum Map On import");
     }
     auto accumulated = single(tone("Existing.wav"));
     accumulated.autoSort = true;
@@ -1908,7 +1999,7 @@ int main(int argc, char **argv) {
                   "SD.wav" &&
               sp::assetFor(accumulated, accumulated.pads[5].asset)->filename ==
                   "OH.wav",
-          "Appending with Auto Map prefers free instrument pads");
+          "Appending with Auto Drum Map prefers free instrument pads");
     for (int i = 0; i < 32; ++i)
       check(accumulated.pads[i].asset.isNotEmpty() == (i < 17 || i >= 24),
             "Append reserves C slots for matching second A-instrument hits");
@@ -1927,7 +2018,7 @@ int main(int argc, char **argv) {
     check(unsortedAppend.pads[0].asset == sequential.pool[0]->id &&
               unsortedAppend.pads[1].asset == keptId &&
               unsortedAppend.pads[2].asset == sequential.pool[1]->id,
-          "Auto Map Off appends in import order while skipping occupied pads");
+          "Auto Drum Map Off appends in import order while skipping occupied pads");
     auto nested = dir.getChildFile("input/sub");
     nested.createDirectory();
     sp::atomicWrite(nested.getChildFile("BD.wav"), quiet.pool[0]->original);

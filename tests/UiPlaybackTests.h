@@ -1429,12 +1429,12 @@ struct AutoMapUiTest : std::enable_shared_from_this<AutoMapUiTest> {
             v.project.pads[0].asset == "map-ui-clap" &&
             v.project.pads[7].name == "KEPT";
     if (!ok) {
-      std::cerr << "FAIL: reversible Auto Map UI at stage " << stage << '\n';
+      std::cerr << "FAIL: reversible Auto Drum Map UI at stage " << stage << '\n';
       finish(1);
     } else if (++stage < 18)
       run();
     else {
-      std::cout << "PASS: Auto Map UI toggles, instrument labels, sound edits, "
+      std::cout << "PASS: Auto Drum Map UI toggles, instrument labels, sound edits, "
                    "Undo/Redo, Clear Pad and Clear All\n";
       finish(0);
     }

@@ -51,37 +51,65 @@ String padInstrument(const Project &p, int i) {
 String classify(String name) {
   auto tokens = StringArray::fromTokens(
       name.toLowerCase().replaceCharacters("_-.", "   "), " ", "");
+  // Sample numbers may touch the instrument (01Kick, Snare2, CH1B).
+  // Keep descriptive suffixes intact so unrelated words do not match.
+  for (auto &token : tokens) {
+    token = token.trimCharactersAtStart("0123456789");
+    if (token.length() > 1 &&
+        (token.endsWithChar('a') || token.endsWithChar('b')) &&
+        CharacterFunctions::isDigit(token[token.length() - 2]))
+      token = token.dropLastCharacters(1);
+    token = token.trimCharactersAtEnd("0123456789");
+  }
   auto has = [&](std::initializer_list<const char *> words) {
     for (auto w : words)
       if (tokens.contains(w))
         return true;
     return false;
   };
-  if (has({"oh", "ohh", "hho"}) ||
+  auto hasPair = [&](const char *first, const char *second) {
+    for (int i = 1; i < tokens.size(); ++i)
+      if (tokens[i - 1] == first && tokens[i] == second)
+        return true;
+    return false;
+  };
+  if (has({"oh", "ohh", "hho", "hhoh", "hhohtp", "ohlo", "ohhi",
+           "ohcym"}) ||
       (has({"open"}) && has({"hh", "hat", "hihat"})))
     return "OH";
-  if (has({"ch", "chh"}) ||
+  if (has({"ch", "chh", "hhch", "hhchtp", "hhcrush", "chrev", "chhi",
+           "chtin", "chmultiple", "chglitch"}) ||
       (has({"closed", "close"}) && has({"hh", "hat", "hihat"})))
     return "CH";
-  if (has({"bd", "kick", "bassdrum"}))
+  if (has({"bd", "kick", "bassdrum", "kickeq", "kickcleant", "kickcleand",
+           "kickhardd", "kickhardt", "kickfiltd", "kickfiltt", "kickaird",
+           "kicktwists", "kicktwistseq", "kickbit", "kickcrush", "kickdirt",
+           "kickecho", "kickhi", "kickhp", "kickround", "kickwooly"}) ||
+      hasPair("bass", "drum"))
     return "BD";
-  if (has({"rim", "rimshot", "rs", "sidestick", "crossstick"}) ||
-      (has({"side", "cross"}) && has({"stick"})))
+  if (has({"rim", "rimshot", "rs", "sidestick", "crossstick", "woodblock",
+           "block", "clave", "claves"}) ||
+      (has({"side", "cross"}) && has({"stick"})) ||
+      hasPair("wood", "block"))
     return "Rim";
-  if (has({"sd", "snare"}))
+  if (has({"sd", "snare", "snarecln", "snaresat", "snarecrush",
+           "snarecrushhi", "snarecrushlo", "snareb"}))
     return "SD";
-  if (has({"clap", "cp", "clp"}))
+  if (has({"clap", "cp", "clp", "handcl", "handclap", "clapwet",
+           "clapcrush", "claplo", "clapmid", "snap", "snaps",
+           "snap5glitch"}))
     return "Clap";
   if (has({"ride", "rd"}))
     return "Ride";
-  if (has({"crash", "cr", "cym", "cymbal", "china", "chinese"}))
+  if (has({"crash", "cr", "cym", "cymbal", "china", "chinese", "splash"}))
     return "Crash";
-  if (has({"tom", "toms", "lt", "mt", "ht"})) {
-    if (has({"low", "lo", "floor", "lt"}))
+  if (has({"tom", "toms", "lt", "mt", "ht", "tomlow", "tommid",
+           "tomhipb", "tomhitnd", "tomlopb", "tomlotnd"})) {
+    if (has({"low", "lo", "floor", "lt", "tomlow", "tomlopb", "tomlotnd"}))
       return "Low Tom";
-    if (has({"high", "hi", "ht"}))
+    if (has({"high", "hi", "ht", "tomhipb", "tomhitnd"}))
       return "High Tom";
-    if (has({"mid", "medium", "mt"}))
+    if (has({"mid", "medium", "mt", "tommid"}))
       return "Mid Tom";
     return "Tom";
   }
@@ -92,12 +120,11 @@ String classify(String name) {
       return "High Conga";
     return "Conga";
   }
-  if (has({"shaker", "cabasa"}) ||
-      (has({"perc", "percussion"}) && has({"shake"})))
+  if (has({"shaker", "cabasa", "shake", "maraca", "maracas", "shakerrev"}))
     return "Shaker";
-  if (has({"tamb", "tambourine"}))
+  if (has({"tamb", "tambourine", "tambo"}))
     return "Tamb";
-  if (has({"cowbell", "cb"}))
+  if (has({"cowbell", "cb", "cowb"}))
     return "Cowbell";
   if (has({"bongo", "bongos"}))
     return "Bongo";
@@ -1158,7 +1185,7 @@ static Pad padFromJson(const var &v, const Project &p, StringArray &ids,
          "Invalid manual trim range");
   if (pad.asset.isNotEmpty()) {
     need(!requireId || v.hasProperty("assignmentId"),
-         "Missing assignment ID in Auto Map state");
+         "Missing assignment ID in Auto Drum Map state");
     need(!v.hasProperty("assignmentId") || v["assignmentId"].isString(),
          "Invalid assignment ID");
     pad.assignmentId = v.hasProperty("assignmentId")
@@ -1306,7 +1333,7 @@ Project loadPreset(const File &file) {
     auto *previous = state["previous"].getArray();
     auto *transient = state["transient"].getArray();
     need(p.autoSort && previous && previous->size() == 32 && transient,
-         "Invalid Auto Map restore state");
+         "Invalid Auto Drum Map restore state");
     AutoMapState restored;
     StringArray previousIds;
     for (int i = 0; i < 32; ++i) {
@@ -1323,7 +1350,7 @@ Project loadPreset(const File &file) {
       need(id.isString() && ids.contains(id.toString()) &&
                !previousIds.contains(id.toString()) &&
                !restored.transient.contains(id.toString()),
-           "Invalid transient Auto Map assignment");
+           "Invalid transient Auto Drum Map assignment");
       restored.transient.add(id.toString());
     }
     p.autoMapRestore = std::move(restored);

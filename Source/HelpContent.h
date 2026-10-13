@@ -28,13 +28,15 @@ Choose *Import Sample Folder* (Cmd+I), or drop WAV/AIFF files or folders into th
 
 Drag a pool sound onto a pad to assign it. Drag between pads to move or swap sounds and their settings. Green pool entries are already assigned; the selected pad is green.
 
-*Auto Map* On assigns sounds by instrument name:
+*Auto Drum Map* On assigns drum sounds by instrument names in their filenames:
 • A: Kick, Snare, Clap, Rim, Closed Hat, Open Hat, Ride, Crash.
 • B: Low/Mid/High Tom, Low/High Conga, Shaker, Tambourine, Cowbell.
 • C: The second sound of each A instrument.
 • D: Further variants and other percussion.
 
-*Auto Map* Off restores the previous layout with your edits. New assignments fill free slots; overflow stays in the pool. Unedited sounds added only by mapping return to the pool. Instrument labels are hidden when Off.
+Recognition is case-insensitive and supports numbered and common compound names such as *01Kick*, *KickEQ*, *SnareCln*, *HHCH* and *HHOH*. *Bass Drum* maps to Kick; *HANDCL*, *HandClap* and *Snap* to Clap; *Woodblock*, *Block* and *Clave* to Rim; *Splash* to Crash; *Cowb* to Cowbell; *Shake* and *Maracas* to Shaker; *Tambo* to Tambourine. Unrecognized sounds go to D when space is available.
+
+*Auto Drum Map* Off restores the previous layout with your edits. New assignments fill free slots; overflow stays in the pool. Unedited sounds added only by mapping return to the pool. Instrument labels are hidden when Off.
 
 ## Listen and Edit
 Click a pad or pool sound to play the SP-1200 preview: mono, processed, 12-bit audio with pitch compensation. *Stop Sound* stops playback. Analog SP filters and envelopes are not emulated.
@@ -67,7 +69,7 @@ Choose SP-1200 Bank Creator > *Settings* (Cmd+,):
 • *Fade Out Sound on Export*: Off by default; On fades one-shots over up to 40 ms.
 • *Normalize on Export*: On by default; sets each processed sound to −0.5 dBFS peak. Off keeps unity gain.
 
-Both settings also affect preview and are saved in kits. *Pitch Fit*, *Auto Map*, *Auto Trim* and the threshold are remembered across restarts. Opening a kit restores its settings.
+Both settings also affect preview and are saved in kits. *Pitch Fit*, *Auto Drum Map*, *Auto Trim* and the threshold are remembered across restarts. Opening a kit restores its settings.
 
 *Help* > *Show Tooltips* toggles hints for the global checkboxes and threshold slider; this preference is remembered.
 
