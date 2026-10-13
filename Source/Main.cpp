@@ -14,12 +14,28 @@
 #include <numeric>
 #include <thread>
 using namespace juce;
+class SampleSearchEditor : public TextEditor {
+public:
+  std::function<void()> onArrowDown;
+  bool keyPressed(const KeyPress &key) override {
+    if (key == KeyPress(KeyPress::downKey) && onArrowDown) {
+      onArrowDown();
+      return true;
+    }
+    return TextEditor::keyPressed(key);
+  }
+};
 class SamplePoolListBox : public ListBox {
 public:
   using ListBox::ListBox;
   std::function<void(int)> onKeyboardSelection;
+  std::function<void()> onArrowUpFromFirst;
   bool keyPressed(const KeyPress &key) override {
     const int previous = getSelectedRow();
+    if (key == KeyPress(KeyPress::upKey) && previous == 0 && onArrowUpFromFirst) {
+      onArrowUpFromFirst();
+      return true;
+    }
     const bool handled = ListBox::keyPressed(key);
     const int row = getSelectedRow();
     if (handled && row != previous && onKeyboardSelection)
@@ -314,12 +330,14 @@ public:
   int selected = 0;
   int waveformPad = -1;
   bool busy = false, dirty = false;
+  String savedKitName;
+  uint64_t kitSession = 0;
   std::array<bool, 32> memoryProblems{};
   std::atomic<uint64_t> generation{0};
   std::atomic<uint64_t> previewGeneration{0};
   std::array<std::unique_ptr<PadButton>, 32> pads;
   SamplePoolListBox pool{"Samples", this};
-  TextEditor poolSearch;
+  SampleSearchEditor poolSearch;
   TextButton clearPoolSearch{"X"};
   Label poolEmpty;
   std::vector<std::shared_ptr<sp::Asset>> visiblePool;
@@ -400,6 +418,7 @@ public:
       if (auto asset = poolAssetAtRow(row))
         playPoolSample(asset);
     };
+    pool.onArrowUpFromFirst = [this] { poolSearch.grabKeyboardFocus(); };
     poolSearch.setTitle("Search Samples");
     poolSearch.setFont(spStyle::body(14));
     poolSearch.setBorder(BorderSize<int>(1));
@@ -408,8 +427,18 @@ public:
     poolSearch.setTextToShowWhenEmpty("Search Samples",
                                     spStyle::ink.withAlpha(.6f));
     poolSearch.setTooltip("Filter sample filenames as you type. "
-                          "The search is case-insensitive.");
+                          "The search is case-insensitive. "
+                          "Press Down to select and preview the first match.");
     poolSearch.onTextChange = [this] { updatePoolFilter(); };
+    poolSearch.onArrowDown = [this] {
+      // Apply any text-change message still pending before choosing the row.
+      updatePoolFilter();
+      if (auto asset = poolAssetAtRow(0)) {
+        pool.grabKeyboardFocus();
+        pool.selectRow(0);
+        playPoolSample(asset);
+      }
+    };
     clearPoolSearch.setTitle("Clear Search");
     clearPoolSearch.setTooltip("Clear the search and show all pool samples.");
     clearPoolSearch.onClick = [this] {
@@ -529,10 +558,12 @@ public:
     clearAll.setTooltip(
         "Clear the sample pool and all pads. Undo restores the kit.");
     clearAll.onClick = [this] {
-      if (busy || project.pool.empty())
+      if (busy || (project.pool.empty() && savedKitName.isEmpty()))
         return;
       checkpoint();
       sp::clearKit(project);
+      ++kitSession;
+      savedKitName.clear();
       selected = 0;
       pool.deselectAllRows();
       changed();
@@ -879,7 +910,8 @@ public:
     status.setText("Loading samples...", dontSendNotification);
     Component::SafePointer<MainView> safe(this);
     const auto snapshot = project;
-    queue([safe, paths, preset, version, snapshot] {
+    const auto kitFile = preset ? File(paths[0]) : File();
+    queue([safe, paths, preset, version, snapshot, kitFile] {
       try {
         StringArray warnings;
         auto p = snapshot;
@@ -892,13 +924,16 @@ public:
           sp::appendSamples(p, incoming.pool);
         }
         MessageManager::callAsync(
-            [safe, p = std::move(p), warnings, version, preset]() mutable {
+            [safe, p = std::move(p), warnings, version, preset, kitFile]() mutable {
               if (!safe || safe->generation != version)
                 return;
               safe->checkpoint();
               safe->project = std::move(p);
-              if (preset)
+              if (preset) {
+                ++safe->kitSession;
+                safe->savedKitName = kitFile.getFileNameWithoutExtension();
                 safe->selected = 0;
+              }
               const auto note =
                   warnings.isEmpty()
                       ? String()
@@ -941,10 +976,25 @@ public:
         });
   }
   bool canSave(bool bank) const { return !bank || (result && !busy); }
+  String suggestedFileStem(bool bank) const {
+    return sp::bankFileStem(bank && savedKitName.isNotEmpty() ? savedKitName
+                                                           : project.bankName);
+  }
+  void rememberSavedKit(const File &file, uint64_t savedVersion,
+                        uint64_t savedSession) {
+    // A completed save of an older edit still names this kit, but must not
+    // restore a filename after Clear All or after another kit was opened.
+    if (kitSession != savedSession)
+      return;
+    savedKitName = file.getFileNameWithoutExtension();
+    if (generation == savedVersion)
+      dirty = false;
+    refresh();
+  }
   void chooseSave(bool bank, File suggestedFile = {}) {
     if (!canSave(bank))
       return;
-    const auto bankName = sp::bankFileStem(project.bankName);
+    const auto bankName = suggestedFileStem(bank);
     if (suggestedFile == File())
       suggestedFile = File::getSpecialLocation(File::userDocumentsDirectory)
                           .getChildFile(bankName + (bank ? ".sp12" : ".spkit"));
@@ -985,13 +1035,14 @@ public:
             return;
           auto r = safe->busy ? std::shared_ptr<sp::Result>{} : safe->result;
           auto savedVersion = safe->generation.load();
+          const auto savedSession = safe->kitSession;
           if (bank) {
             safe->busy = true;
             safe->status.setText("Preparing SP-1200 bank...",
                                  dontSendNotification);
             safe->refresh();
           }
-          safe->queue([safe, p, r, file, bank, savedVersion] {
+          safe->queue([safe, p, r, file, bank, savedVersion, savedSession] {
             try {
               if (bank) {
                 const auto cancel = [safe, savedVersion] {
@@ -1004,10 +1055,10 @@ public:
                 sp::atomicWrite(file, complete.bank);
               } else
                 sp::savePreset(p, file, r.get());
-              MessageManager::callAsync([safe, file, bank, savedVersion] {
+              MessageManager::callAsync([safe, file, bank, savedVersion, savedSession] {
                 if (safe) {
-                  if (!bank && safe->generation == savedVersion)
-                    safe->dirty = false;
+                  if (!bank)
+                    safe->rememberSavedKit(file, savedVersion, savedSession);
                   if (safe->generation == savedVersion) {
                     if (bank) {
                       safe->busy = false;
@@ -1367,7 +1418,8 @@ public:
     }
     bool has = project.pads[selected].asset.isNotEmpty();
     exportBank.setEnabled(result && !busy);
-    clearAll.setEnabled(!busy && !project.pool.empty());
+    clearAll.setEnabled(!busy &&
+                        (!project.pool.empty() || savedKitName.isNotEmpty()));
     tune.setEnabled(!busy);
     tune.setToggleState(project.autoTune, dontSendNotification);
     sort.setEnabled(!busy);
@@ -1969,7 +2021,12 @@ public:
         if (code)
           finish(code);
         else
-          testMemoryPlayback(view, finish);
+          testKitFilenameUi(view, [&view, finish](int namesCode) {
+            if (namesCode)
+              finish(namesCode);
+            else
+              testMemoryPlayback(view, finish);
+          });
       });
     }
     if (smoke) {

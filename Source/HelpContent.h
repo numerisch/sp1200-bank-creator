@@ -28,7 +28,7 @@ Choose *Import Sample Folder* (Cmd+I), or drop WAV/AIFF files or folders into th
 
 Drag a pool sound onto a pad to assign it. Drag between pads to move or swap sounds and their settings. Green pool entries are already assigned; the selected pad is green.
 
-*Search Samples* above the pool filters filenames as you type, without pressing Return and regardless of case. Click *X* to clear the search and show all samples. Filtering only changes the list; pool sounds and pad assignments stay intact.
+*Search Samples* above the pool filters filenames as you type, without pressing Return and regardless of case. Down moves focus to the first matching sample and plays it. Click *X* to clear the search and show all samples. Filtering only changes the list; pool sounds and pad assignments stay intact.
 
 *Auto Drum Map* On assigns drum sounds by instrument names in their filenames:
 • A: Kick, Snare, Clap, Rim, Closed Hat, Open Hat, Ride, Crash.
@@ -43,7 +43,7 @@ Recognition is case-insensitive and supports numbered and common compound names 
 ## Listen and Edit
 Click a pad or pool sound to play the SP-1200 preview: mono, processed, 12-bit audio with pitch compensation. *Stop Sound* stops playback. Analog SP filters and envelopes are not emulated.
 
-With the sample pool focused, Up/Down selects and previews sounds, including in a filtered list.
+With the sample pool focused, Up/Down selects and previews sounds, including in a filtered list. Up at the first sample returns focus to *Search Samples*.
 
 Below the waveform, edit the six-character *Sound Name* and *Channel Output* (default 1–8 by pad position). *Reverse* changes playback direction. Original files remain unchanged.
 
@@ -78,14 +78,14 @@ Both settings also affect preview and are saved in kits. *Pitch Fit*, *Auto Drum
 *Help* > *Show Tooltips* toggles hints for the global checkboxes and threshold slider; this preference is remembered.
 
 ## Clear, *Undo* and Save
-*Clear Pad* or Delete/Backspace removes an assignment and keeps its sound in the pool. *Clear All* empties pads and pool. Text fields keep their usual editing keys.
+*Clear Pad* or Delete/Backspace removes an assignment and keeps its sound in the pool. *Clear All* empties pads and pool and resets the saved kit filename. Text fields keep their usual editing keys, except Down in *Search Samples* moves into the pool.
 
 • *Undo*: Cmd+Z. *Redo*: Shift+Cmd+Z.
 • *Save Kit*: Cmd+S. Saves the entire pool, original samples, assignments and settings in a portable .spkit, even when memory is exceeded.
 • *Open Kit*: Cmd+O. Replaces the current kit. Kit format 7 is supported; earlier versions are not migrated.
 • *Export SP-1200 Bank*: Shift+Cmd+E. Prepares and validates all assigned sounds, then writes a Rossum .sp12 bank.
 
-Suggested filenames use the first imported folder: up to 16 ASCII characters, with umlauts converted. Sound names use up to six ASCII characters.
+Export suggests the filename of the last successfully saved or opened kit. Before saving a kit, suggested filenames use the first imported folder. Bank filenames use up to 16 ASCII characters, with umlauts converted. Sound names use up to six ASCII characters.
 
 )HELP";
 } // namespace appInfo

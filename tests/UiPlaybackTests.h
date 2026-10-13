@@ -1515,6 +1515,7 @@ struct PoolSearchUiTest : std::enable_shared_from_this<PoolSearchUiTest> {
   std::vector<std::shared_ptr<sp::Asset>> assets;
   String drag;
   int stage = 0;
+  bool nativeFocusAvailable = false;
   PoolSearchUiTest(MainView &v, std::function<void(int)> done)
       : view(v), finish(std::move(done)) {}
   void next(String query) {
@@ -1559,7 +1560,13 @@ struct PoolSearchUiTest : std::enable_shared_from_this<PoolSearchUiTest> {
     }
     view.result = std::make_shared<sp::Result>(sp::process(view.project));
     view.refresh();
-    next("sNaRe");
+    // Native window activation completes after application initialisation.
+    // Focus assertions must run after that, as a real keypress would.
+    Timer::callAfterDelay(100, [self = shared_from_this()] {
+      Process::makeForegroundProcess();
+      self->view.getTopLevelComponent()->toFront(true);
+      self->next("sNaRe");
+    });
   }
   void check() {
     auto &v = view;
@@ -1570,9 +1577,33 @@ struct PoolSearchUiTest : std::enable_shared_from_this<PoolSearchUiTest> {
             v.poolAssetAtRow(1) == assets[2] && v.project.pool.size() == 4 &&
             v.past.empty() && !v.dirty && v.clearPoolSearch.isEnabled();
       v.poolSearch.grabKeyboardFocus();
+      // Direct CTest launches may not own a macOS key window. The native
+      // bundle run additionally checks the actual keyboard-focus transfer.
+      nativeFocusAvailable = v.poolSearch.hasKeyboardFocus(true);
+      if (SystemStats::getEnvironmentVariable("SP_UI_REQUIRE_FOCUS", {}) == "1")
+        ok &= nativeFocusAvailable;
       const auto caret = v.poolSearch.getCaretRectangleForCharIndex(0);
       ok &= std::abs(caret.getCentreY() - v.poolSearch.getHeight() / 2) <= 1;
       snapshot("pool-search-centred");
+      // Even with another row selected, Down from search starts at the first
+      // match, and applies the latest text before its async change message.
+      v.pool.selectRow(1);
+      v.poolSearch.setText("dry");
+      const bool entered = v.poolSearch.keyPressed(KeyPress(KeyPress::downKey));
+      const bool firstMatch =
+          (!nativeFocusAvailable || v.pool.hasKeyboardFocus(true)) &&
+          v.getNumRows() == 1 && v.pool.getSelectedRow() == 0 && v.active &&
+          v.playingPad == 1;
+      if (!entered || !firstMatch)
+        std::cerr << "Search Down: handled=" << entered
+                  << " focus=" << v.pool.hasKeyboardFocus(true)
+                  << " rows=" << v.getNumRows()
+                  << " selected=" << v.pool.getSelectedRow()
+                  << " active=" << v.active << " pad=" << v.playingPad << '\n';
+      ok &= entered && firstMatch;
+      v.stopAudio();
+      v.poolSearch.setText("sNaRe", false);
+      v.updatePoolFilter();
       const Point<float> point(10, 10);
       const MouseEvent click(
           Desktop::getInstance().getMainMouseSource(), point,
@@ -1588,9 +1619,18 @@ struct PoolSearchUiTest : std::enable_shared_from_this<PoolSearchUiTest> {
       ok &= v.pool.keyPressed(KeyPress(KeyPress::downKey)) &&
             v.pool.getSelectedRow() == 1 && v.active && v.playingPad == 2;
       ok &= v.pool.keyPressed(KeyPress(KeyPress::upKey)) &&
+            v.pool.getSelectedRow() == 0 && v.active && v.playingPad == 1 &&
+            (!nativeFocusAvailable || v.pool.hasKeyboardFocus(true));
+      v.position = 10;
+      ok &= v.pool.keyPressed(KeyPress(KeyPress::upKey)) &&
+            (!nativeFocusAvailable || v.poolSearch.hasKeyboardFocus(true)) &&
+            v.pool.getSelectedRow() == 0 && v.poolSearch.getText() == "sNaRe" &&
+            v.active && v.playingPad == 1 && v.position == 10;
+      v.stopAudio();
+      ok &= v.poolSearch.keyPressed(KeyPress(KeyPress::downKey)) &&
+            (!nativeFocusAvailable || v.pool.hasKeyboardFocus(true)) &&
             v.pool.getSelectedRow() == 0 && v.active && v.playingPad == 1;
       v.stopAudio();
-      ok &= v.pool.keyPressed(KeyPress(KeyPress::upKey)) && !v.active;
       v.pool.selectRow(1);
       snapshot("pool-search-filtered");
       if (ok) {
@@ -1616,6 +1656,10 @@ struct PoolSearchUiTest : std::enable_shared_from_this<PoolSearchUiTest> {
             v.getDragSourceDescription(rows).isVoid() &&
             v.project.pool.size() == 4 && v.past.empty() && !v.dirty;
       snapshot("pool-search-empty");
+      v.poolSearch.grabKeyboardFocus();
+      ok &= v.poolSearch.keyPressed(KeyPress(KeyPress::downKey)) &&
+            (!nativeFocusAvailable || v.poolSearch.hasKeyboardFocus(true)) &&
+            !v.active;
       v.clearPoolSearch.onClick();
       ok &= v.poolSearch.getText().isEmpty() && v.getNumRows() == 4 &&
             !v.clearPoolSearch.isEnabled() && !v.poolEmpty.isVisible() &&
@@ -1624,6 +1668,10 @@ struct PoolSearchUiTest : std::enable_shared_from_this<PoolSearchUiTest> {
       ok &= v.pool.keyPressed(KeyPress(KeyPress::downKey)) &&
             v.pool.getSelectedRow() == 0 && v.active && v.playingPad == 0;
       v.stopAudio();
+      ok &= v.pool.keyPressed(KeyPress(KeyPress::upKey)) &&
+            (!nativeFocusAvailable || v.poolSearch.hasKeyboardFocus(true)) &&
+            v.pool.getSelectedRow() == 0 && v.poolSearch.getText().isEmpty() &&
+            !v.active;
       if (ok) {
         next("room");
         return;
@@ -1696,6 +1744,62 @@ struct PoolSearchUiTest : std::enable_shared_from_this<PoolSearchUiTest> {
 };
 static void testPoolSearch(MainView &view, std::function<void(int)> finish) {
   std::make_shared<PoolSearchUiTest>(view, std::move(finish))->run();
+}
+static void testKitFilenameUi(MainView &view, std::function<void(int)> finish) {
+  const auto dir = File::getSpecialLocation(File::tempDirectory)
+                       .getChildFile("sp-kit-names-" + Uuid().toString());
+  dir.createDirectory();
+  const auto file = dir.getChildFile("Opened Kit.spkit");
+  view.project = sp::Project{};
+  view.project.bankName = "Imported Folder";
+  view.savedKitName.clear();
+  view.refresh();
+  const auto version = view.generation.load();
+  const auto session = view.kitSession;
+  bool ok = view.suggestedFileStem(true) == "Imported Folder";
+  sp::savePreset(view.project, file);
+  view.rememberSavedKit(file, version, session);
+  ok &= view.suggestedFileStem(true) == "Opened Kit" &&
+        view.suggestedFileStem(false) == "Imported Folder" &&
+        view.clearAll.isEnabled() && !view.dirty;
+  view.dirty = true;
+  ++view.generation;
+  view.rememberSavedKit(dir.getChildFile("Save As Kit.spkit"), version, session);
+  ok &= view.suggestedFileStem(true) == "Save As Kit" && view.dirty;
+  view.clearAll.onClick();
+  view.rememberSavedKit(file, version, session);
+  ok &= view.savedKitName.isEmpty() && view.suggestedFileStem(true) == "KIT";
+  if (!ok) {
+    std::cerr << "FAIL: export filename suggestions or Clear All reset\n";
+    dir.deleteRecursively();
+    finish(1);
+    return;
+  }
+  afterPreviewJobs(view, [&view, file, dir, finish] {
+    view.load({file.getFullPathName()}, true);
+    afterPreviewJobs(view, [&view, dir, finish] {
+      // Loading posts a message which starts a separate processing job.
+      afterPreviewJobs(view, [&view, dir, finish] {
+        const bool loaded = view.savedKitName == "Opened Kit" &&
+                            view.project.bankName == "Imported Folder" &&
+                            view.suggestedFileStem(true) == "Opened Kit" &&
+                            !view.dirty && !view.busy;
+        view.project = sp::Project{};
+        view.savedKitName.clear();
+        ++view.kitSession;
+        view.past.clear();
+        view.future.clear();
+        view.result.reset();
+        view.currentPlan.reset();
+        view.refresh();
+        dir.deleteRecursively();
+        std::cout << (loaded ? "PASS" : "FAIL")
+                  << ": saved/opened kit export names, Save As, stale saves "
+                     "and Clear All on an empty saved kit\n";
+        finish(loaded ? 0 : 1);
+      });
+    });
+  });
 }
 static void testMemoryPlayback(MainView &view,
                                std::function<void(int)> finish) {
