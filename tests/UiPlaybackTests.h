@@ -1509,6 +1509,194 @@ static void testMemoryPlaybackSuite(MainView &view,
     });
   });
 }
+struct PoolSearchUiTest : std::enable_shared_from_this<PoolSearchUiTest> {
+  MainView &view;
+  std::function<void(int)> finish;
+  std::vector<std::shared_ptr<sp::Asset>> assets;
+  String drag;
+  int stage = 0;
+  PoolSearchUiTest(MainView &v, std::function<void(int)> done)
+      : view(v), finish(std::move(done)) {}
+  void next(String query) {
+    view.poolSearch.setText(query);
+    // Observe the editor's actual text-change message, without pressing Return.
+    MessageManager::callAsync([self = shared_from_this()] { self->check(); });
+  }
+  void snapshot(const String &name) {
+    const auto destination =
+        SystemStats::getEnvironmentVariable("SP_UI_SNAPSHOT_DIR", {});
+    if (destination.isEmpty())
+      return;
+    const File output(destination);
+    output.createDirectory();
+    FileOutputStream stream(output.getChildFile(name + ".png"));
+    stream.setPosition(0);
+    stream.truncate();
+    PNGImageFormat().writeImageToStream(
+        view.createComponentSnapshot(view.getLocalBounds()), stream);
+  }
+  void run() {
+    view.project = sp::Project{};
+    view.project.normalizeOnExport = false;
+    view.past.clear();
+    view.future.clear();
+    view.dirty = false;
+    view.selected = 0;
+    for (const auto *filename : {"Kick_A.wav", "Snare_Dry.wav",
+                                 "SNARE_Room.wav", "Shaker.wav"}) {
+      auto asset = std::make_shared<sp::Asset>();
+      asset->id = "pool-search-" + String(assets.size());
+      asset->filename = filename;
+      asset->category = sp::classify(File(filename).getFileNameWithoutExtension());
+      asset->sampleRate = sp::rate;
+      asset->audio.setSize(1, sp::rate / 10);
+      for (int i = 0; i < asset->audio.getNumSamples(); ++i)
+        asset->audio.setSample(0, i, .05f * float(assets.size() + 1));
+      view.project.pads[assets.size()] =
+          sp::makePad(*asset, (int)assets.size(), false, false);
+      assets.push_back(asset);
+      view.project.pool.push_back(asset);
+    }
+    view.result = std::make_shared<sp::Result>(sp::process(view.project));
+    view.refresh();
+    next("sNaRe");
+  }
+  void check() {
+    auto &v = view;
+    bool ok = true;
+    switch (stage++) {
+    case 0: {
+      ok &= v.getNumRows() == 2 && v.poolAssetAtRow(0) == assets[1] &&
+            v.poolAssetAtRow(1) == assets[2] && v.project.pool.size() == 4 &&
+            v.past.empty() && !v.dirty && v.clearPoolSearch.isEnabled();
+      v.poolSearch.grabKeyboardFocus();
+      const auto caret = v.poolSearch.getCaretRectangleForCharIndex(0);
+      ok &= std::abs(caret.getCentreY() - v.poolSearch.getHeight() / 2) <= 1;
+      snapshot("pool-search-centred");
+      const Point<float> point(10, 10);
+      const MouseEvent click(
+          Desktop::getInstance().getMainMouseSource(), point,
+          ModifierKeys(ModifierKeys::leftButtonModifier), 1, 0, 0, 0, 0,
+          &v.pool, &v.pool, Time::getCurrentTime(), point,
+          Time::getCurrentTime(), 1, false);
+      v.listBoxItemClicked(0, click);
+      ok &= v.active && v.playingPad == 1;
+      v.stopAudio();
+      v.pool.grabKeyboardFocus();
+      v.pool.selectRow(0);
+      ok &= !v.active;
+      ok &= v.pool.keyPressed(KeyPress(KeyPress::downKey)) &&
+            v.pool.getSelectedRow() == 1 && v.active && v.playingPad == 2;
+      ok &= v.pool.keyPressed(KeyPress(KeyPress::upKey)) &&
+            v.pool.getSelectedRow() == 0 && v.active && v.playingPad == 1;
+      v.stopAudio();
+      ok &= v.pool.keyPressed(KeyPress(KeyPress::upKey)) && !v.active;
+      v.pool.selectRow(1);
+      snapshot("pool-search-filtered");
+      if (ok) {
+        next("room");
+        return;
+      }
+      break;
+    }
+    case 1:
+      ok &= v.getNumRows() == 1 && v.poolAssetAtRow(0) == assets[2] &&
+            v.pool.getSelectedRow() == 0 && !v.active &&
+            v.past.empty() && !v.dirty;
+      if (ok) {
+        next("no matching sample");
+        return;
+      }
+      break;
+    case 2: {
+      SparseSet<int> rows;
+      rows.addRange({0, 1});
+      ok &= v.getNumRows() == 0 && v.poolEmpty.isVisible() &&
+            !v.poolAssetAtRow(-1) && !v.poolAssetAtRow(0) &&
+            v.getDragSourceDescription(rows).isVoid() &&
+            v.project.pool.size() == 4 && v.past.empty() && !v.dirty;
+      snapshot("pool-search-empty");
+      v.clearPoolSearch.onClick();
+      ok &= v.poolSearch.getText().isEmpty() && v.getNumRows() == 4 &&
+            !v.clearPoolSearch.isEnabled() && !v.poolEmpty.isVisible() &&
+            v.project.pads[1].asset == assets[1]->id && v.past.empty() && !v.dirty;
+      v.pool.grabKeyboardFocus();
+      ok &= v.pool.keyPressed(KeyPress(KeyPress::downKey)) &&
+            v.pool.getSelectedRow() == 0 && v.active && v.playingPad == 0;
+      v.stopAudio();
+      if (ok) {
+        next("room");
+        return;
+      }
+      break;
+    }
+    case 3: {
+      SparseSet<int> rows;
+      rows.addRange({0, 1});
+      drag = v.getDragSourceDescription(rows).toString();
+      ok &= v.getNumRows() == 1 && drag == "pool:2";
+      if (ok) {
+        // Changing the filter during a drag must not change its source asset.
+        next("kick");
+        return;
+      }
+      break;
+    }
+    case 4:
+      ok &= v.getNumRows() == 1 && v.poolAssetAtRow(0) == assets[0];
+      v.drop(7, drag);
+      ok &= v.project.pads[7].asset == assets[2]->id &&
+            v.project.pool.size() == 4;
+      if (ok) {
+        afterPreviewJobs(v, [self = shared_from_this()] { self->check(); });
+        return;
+      }
+      break;
+    case 5:
+      ok &= !v.busy && v.getNumRows() == 1 &&
+            v.poolAssetAtRow(0) == assets[0] &&
+            v.project.pads[7].asset == assets[2]->id;
+      if (ok) {
+        next("snare");
+        return;
+      }
+      break;
+    case 6: {
+      auto added = std::make_shared<sp::Asset>(*assets[1]);
+      added->id = "pool-search-added";
+      added->filename = "Snare_New.wav";
+      v.project.pool.push_back(added);
+      v.refresh();
+      ok &= v.getNumRows() == 3 && v.poolAssetAtRow(2) == added;
+      v.project = sp::Project{};
+      v.result.reset();
+      v.currentPlan.reset();
+      v.failedTrims.reset();
+      v.selected = 0;
+      v.past.clear();
+      v.future.clear();
+      v.dirty = false;
+      v.refresh();
+      ok &= v.getNumRows() == 0 && v.poolEmpty.isVisible();
+      v.clearPoolSearch.onClick();
+      ok &= v.getNumRows() == 0 && !v.poolEmpty.isVisible();
+      if (ok) {
+        std::cout << "PASS: live pool search, centred caret, keyboard preview, "
+                     "case-insensitive matches, clear, selection, preview, "
+                     "filtered drag and pool changes\n";
+        finish(0);
+        return;
+      }
+      break;
+    }
+    }
+    std::cerr << "FAIL: pool search UI at stage " << stage - 1 << '\n';
+    finish(1);
+  }
+};
+static void testPoolSearch(MainView &view, std::function<void(int)> finish) {
+  std::make_shared<PoolSearchUiTest>(view, std::move(finish))->run();
+}
 static void testMemoryPlayback(MainView &view,
                                std::function<void(int)> finish) {
   auto asset = std::make_shared<sp::Asset>();

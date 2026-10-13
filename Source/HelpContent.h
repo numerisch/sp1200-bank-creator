@@ -28,6 +28,8 @@ Choose *Import Sample Folder* (Cmd+I), or drop WAV/AIFF files or folders into th
 
 Drag a pool sound onto a pad to assign it. Drag between pads to move or swap sounds and their settings. Green pool entries are already assigned; the selected pad is green.
 
+*Search Samples* above the pool filters filenames as you type, without pressing Return and regardless of case. Click *X* to clear the search and show all samples. Filtering only changes the list; pool sounds and pad assignments stay intact.
+
 *Auto Drum Map* On assigns drum sounds by instrument names in their filenames:
 • A: Kick, Snare, Clap, Rim, Closed Hat, Open Hat, Ride, Crash.
 • B: Low/Mid/High Tom, Low/High Conga, Shaker, Tambourine, Cowbell.
@@ -40,6 +42,8 @@ Recognition is case-insensitive and supports numbered and common compound names 
 
 ## Listen and Edit
 Click a pad or pool sound to play the SP-1200 preview: mono, processed, 12-bit audio with pitch compensation. *Stop Sound* stops playback. Analog SP filters and envelopes are not emulated.
+
+With the sample pool focused, Up/Down selects and previews sounds, including in a filtered list.
 
 Below the waveform, edit the six-character *Sound Name* and *Channel Output* (default 1–8 by pad position). *Reverse* changes playback direction. Original files remain unchanged.
 

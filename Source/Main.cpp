@@ -6,6 +6,7 @@
 #include "Core.h"
 #include "HelpContent.h"
 #include "Theme.h"
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -13,6 +14,19 @@
 #include <numeric>
 #include <thread>
 using namespace juce;
+class SamplePoolListBox : public ListBox {
+public:
+  using ListBox::ListBox;
+  std::function<void(int)> onKeyboardSelection;
+  bool keyPressed(const KeyPress &key) override {
+    const int previous = getSelectedRow();
+    const bool handled = ListBox::keyPressed(key);
+    const int row = getSelectedRow();
+    if (handled && row != previous && onKeyboardSelection)
+      onKeyboardSelection(row);
+    return handled;
+  }
+};
 class MainView;
 class PadButton : public Component, public DragAndDropTarget {
 public:
@@ -304,7 +318,11 @@ public:
   std::atomic<uint64_t> generation{0};
   std::atomic<uint64_t> previewGeneration{0};
   std::array<std::unique_ptr<PadButton>, 32> pads;
-  ListBox pool{"Samples", this};
+  SamplePoolListBox pool{"Samples", this};
+  TextEditor poolSearch;
+  TextButton clearPoolSearch{"X"};
+  Label poolEmpty;
+  std::vector<std::shared_ptr<sp::Asset>> visiblePool;
   Wave wave;
   TextButton import{"Import Sample Folder"}, exportBank{"Export SP-1200 Bank"},
       stop{"Stop Sound"}, remove{"Clear Pad"}, reverse{"Reverse"},
@@ -345,6 +363,9 @@ public:
     setOpaque(true);
     setWantsKeyboardFocus(true);
     for (Component *c : std::initializer_list<Component *>{&pool,
+                                                           &poolSearch,
+                                                           &clearPoolSearch,
+                                                           &poolEmpty,
                                                            &wave,
                                                            &import,
                                                            &exportBank,
@@ -375,6 +396,32 @@ public:
     pool.setColour(ListBox::backgroundColourId, spStyle::well);
     pool.setColour(ListBox::outlineColourId, spStyle::muted.withAlpha(.4f));
     pool.setOutlineThickness(1);
+    pool.onKeyboardSelection = [this](int row) {
+      if (auto asset = poolAssetAtRow(row))
+        playPoolSample(asset);
+    };
+    poolSearch.setTitle("Search Samples");
+    poolSearch.setFont(spStyle::body(14));
+    poolSearch.setBorder(BorderSize<int>(1));
+    poolSearch.setIndents(4, 0);
+    poolSearch.setJustification(Justification::centredLeft);
+    poolSearch.setTextToShowWhenEmpty("Search Samples",
+                                    spStyle::ink.withAlpha(.6f));
+    poolSearch.setTooltip("Filter sample filenames as you type. "
+                          "The search is case-insensitive.");
+    poolSearch.onTextChange = [this] { updatePoolFilter(); };
+    clearPoolSearch.setTitle("Clear Search");
+    clearPoolSearch.setTooltip("Clear the search and show all pool samples.");
+    clearPoolSearch.onClick = [this] {
+      poolSearch.setText({}, false);
+      updatePoolFilter();
+      poolSearch.grabKeyboardFocus();
+    };
+    poolEmpty.setText("No matching samples", dontSendNotification);
+    poolEmpty.setFont(spStyle::body(14));
+    poolEmpty.setColour(Label::textColourId, spStyle::muted);
+    poolEmpty.setJustificationType(Justification::centred);
+    poolEmpty.setInterceptsMouseClicks(false, false);
     name.setFont(spStyle::display(14));
     details.setFont(spStyle::display(12));
     details.setColour(Label::textColourId, spStyle::ivory);
@@ -1006,12 +1053,38 @@ public:
     else
       load(files);
   }
-  int getNumRows() override { return (int)project.pool.size(); }
+  std::shared_ptr<sp::Asset> poolAssetAtRow(int row) const {
+    return row >= 0 && row < (int)visiblePool.size() ? visiblePool[row] : nullptr;
+  }
+  void updatePoolFilter() {
+    const auto chosen = poolAssetAtRow(pool.getSelectedRow());
+    const auto query = poolSearch.getText().trim();
+    std::vector<std::shared_ptr<sp::Asset>> filtered;
+    for (const auto &asset : project.pool)
+      if (query.isEmpty() || asset->filename.containsIgnoreCase(query))
+        filtered.push_back(asset);
+    if (filtered != visiblePool) {
+      pool.deselectAllRows();
+      visiblePool = std::move(filtered);
+      pool.updateContent();
+      if (chosen) {
+        const auto found =
+            std::find(visiblePool.begin(), visiblePool.end(), chosen);
+        if (found != visiblePool.end())
+          pool.selectRow((int)std::distance(visiblePool.begin(), found), true);
+      }
+    } else
+      pool.updateContent();
+    clearPoolSearch.setEnabled(poolSearch.getText().isNotEmpty());
+    poolEmpty.setVisible(query.isNotEmpty() && visiblePool.empty());
+    pool.repaint();
+  }
+  int getNumRows() override { return (int)visiblePool.size(); }
   void paintListBoxItem(int row, Graphics &g, int w, int h,
                         bool chosen) override {
-    if (row >= getNumRows())
+    auto a = poolAssetAtRow(row);
+    if (!a)
       return;
-    auto a = project.pool[row];
     StringArray assignedPads;
     for (int i = 0; i < 32; ++i)
       if (project.pads[i].asset == a->id)
@@ -1046,13 +1119,18 @@ public:
   }
 
   var getDragSourceDescription(const SparseSet<int> &rows) override {
-    return rows.size() ? var("pool:" + String(rows[0])) : var();
+    const auto asset = rows.size() ? poolAssetAtRow(rows[0]) : nullptr;
+    const auto found = std::find(project.pool.begin(), project.pool.end(), asset);
+    // Drag descriptions use the full pool index, independent of the filter.
+    if (found == project.pool.end())
+      return {};
+    return "pool:" + String((int)std::distance(project.pool.begin(), found));
   }
   void listBoxItemClicked(int row, const MouseEvent &event) override {
     if (event.mods.isLeftButtonDown() &&
         !event.mouseWasDraggedSinceMouseDown() && row >= 0 &&
         row < getNumRows())
-      playPoolSample(project.pool[row]);
+      playPoolSample(poolAssetAtRow(row));
   }
   void drop(int target, String source) {
     if (busy)
@@ -1063,7 +1141,8 @@ public:
       std::swap(project.pads[i], project.pads[target]);
       sp::retainMappedAssignment(project, i);
       sp::retainMappedAssignment(project, target);
-    } else if (source.startsWith("pool:") && i >= 0 && i < getNumRows())
+    } else if (source.startsWith("pool:") && i >= 0 &&
+               i < (int)project.pool.size())
       sp::assignPad(project, target, *project.pool[i]);
     selected = target;
     changed();
@@ -1281,8 +1360,7 @@ public:
   void refresh() {
     updateStopButton();
     updating = true;
-    pool.updateContent();
-    pool.repaint();
+    updatePoolFilter();
     for (int i = 0; i < 32; ++i) {
       pads[i]->setTitle(sp::padName(i) + " " + project.pads[i].name);
       pads[i]->repaint();
@@ -1402,7 +1480,14 @@ public:
     status.setBounds(bounds.removeFromBottom(28));
     bounds.removeFromBottom(12);
     auto editor = bounds.removeFromBottom(204);
-    pool.setBounds(bounds.removeFromLeft(310).reduced(0, 3));
+    auto poolArea = bounds.removeFromLeft(310).reduced(0, 3);
+    auto searchRow = poolArea.removeFromTop(30);
+    clearPoolSearch.setBounds(searchRow.removeFromRight(30));
+    searchRow.removeFromRight(6);
+    poolSearch.setBounds(searchRow);
+    poolArea.removeFromTop(8);
+    pool.setBounds(poolArea);
+    poolEmpty.setBounds(poolArea.withTrimmedTop(8).withHeight(30));
     bounds.removeFromLeft(18);
     int ph = bounds.getHeight() / 4, pw = bounds.getWidth() / 8;
     for (int i = 0; i < 32; ++i)
@@ -1875,12 +1960,17 @@ public:
     const auto appMenu = fileMenu->getApplicationMenu();
     MenuBarModel::setMacMainMenu(fileMenu.get(), &appMenu);
     if (playbackTest) {
-      testMemoryPlayback(
-          *static_cast<MainView *>(window->getContentComponent()),
-          [this](int code) {
-            setApplicationReturnValue(code);
-            quit();
-          });
+      auto &view = *static_cast<MainView *>(window->getContentComponent());
+      auto finish = [this](int code) {
+        setApplicationReturnValue(code);
+        quit();
+      };
+      testPoolSearch(view, [&view, finish](int code) {
+        if (code)
+          finish(code);
+        else
+          testMemoryPlayback(view, finish);
+      });
     }
     if (smoke) {
       auto &view = *static_cast<MainView *>(window->getContentComponent());
