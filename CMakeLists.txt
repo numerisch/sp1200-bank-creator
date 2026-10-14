@@ -3,14 +3,14 @@ cmake_minimum_required(VERSION 3.22)
 if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS" FORCE)
 endif()
-project(SP1200BankCreator VERSION 1.11.4 LANGUAGES C CXX)
+project(SP1200BankCreator VERSION 1.12.3 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 include(FetchContent)
 FetchContent_Declare(JUCE GIT_REPOSITORY https://github.com/juce-framework/JUCE.git GIT_TAG 8.0.9 GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(JUCE)
 juce_add_binary_data(BankTemplate SOURCES DemoBanks/EMPTY_.sp12)
 juce_add_binary_data(AppLegal NAMESPACE AppLegal HEADER_NAME AppLegal.h SOURCES LICENSE)
-add_library(SampleCore Source/Core.cpp)
+add_library(SampleCore Source/Core.cpp Source/NativeBank.cpp)
 target_include_directories(SampleCore PUBLIC Source)
 target_compile_definitions(SampleCore PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_MODAL_LOOPS_PERMITTED=1)
 target_link_libraries(SampleCore PUBLIC juce::juce_audio_utils juce::juce_cryptography BankTemplate)
@@ -22,6 +22,11 @@ juce_add_gui_app(SP1200BankCreator PRODUCT_NAME "SP-1200 Bank Creator" BUNDLE_ID
             <key>CFBundleTypeRole</key><string>Editor</string>
             <key>LSHandlerRank</key><string>Owner</string>
             <key>LSItemContentTypes</key><array><string>com.sp1200.sampletool.spkit</string></array>
+        </dict><dict>
+            <key>CFBundleTypeName</key><string>SP-1200 Bank</string>
+            <key>CFBundleTypeRole</key><string>Editor</string>
+            <key>LSHandlerRank</key><string>Default</string>
+            <key>LSItemContentTypes</key><array><string>com.sp1200.sampletool.sp12</string></array>
         </dict></array>
         <key>UTExportedTypeDeclarations</key><array><dict>
             <key>UTTypeIdentifier</key><string>com.sp1200.sampletool.spkit</string>
@@ -29,6 +34,14 @@ juce_add_gui_app(SP1200BankCreator PRODUCT_NAME "SP-1200 Bank Creator" BUNDLE_ID
             <key>UTTypeConformsTo</key><array><string>public.data</string></array>
             <key>UTTypeTagSpecification</key><dict>
                 <key>public.filename-extension</key><array><string>spkit</string></array>
+            </dict>
+        </dict></array>
+        <key>UTImportedTypeDeclarations</key><array><dict>
+            <key>UTTypeIdentifier</key><string>com.sp1200.sampletool.sp12</string>
+            <key>UTTypeDescription</key><string>SP-1200 Bank</string>
+            <key>UTTypeConformsTo</key><array><string>public.data</string></array>
+            <key>UTTypeTagSpecification</key><dict>
+                <key>public.filename-extension</key><array><string>sp12</string></array>
             </dict>
         </dict></array>
     </dict></plist>]=]

@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FILES = (
     ".gitignore", ".gitattributes", "AGENTS.md", "CMakeLists.txt", "README.md", "LICENSE",
     "LICENSING.md", "THIRD_PARTY_NOTICES.md", "docs/RELEASING.md",
-    "DemoBanks/EMPTY_.sp12", "tests/CoreTests.cpp", "tests/UiPlaybackTests.h",
+    "DemoBanks/EMPTY_.sp12", "tests/CoreTests.cpp", "tests/BankImportTests.h", "tests/UiPlaybackTests.h",
     "tests/UiSnapshots.h", "tests/fixtures/codec32.sp12",
     "tests/fixtures/dr-sample-instruments.tsv", "tools/prepare_public_repo.py",
 )

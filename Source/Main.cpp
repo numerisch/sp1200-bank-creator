@@ -4,6 +4,7 @@
 #include "AppPreferences.h"
 #include "AppLegal.h"
 #include "Core.h"
+#include "NativeBank.h"
 #include "HelpContent.h"
 #include "Theme.h"
 #include <algorithm>
@@ -331,6 +332,7 @@ public:
   int waveformPad = -1;
   bool busy = false, dirty = false;
   String savedKitName;
+  String documentFileName;
   uint64_t kitSession = 0;
   std::array<bool, 32> memoryProblems{};
   std::atomic<uint64_t> generation{0};
@@ -541,8 +543,9 @@ public:
     loop.setTooltip("On: play the beginning once, then repeat from the blue "
                     "handle to the selection end until Stop Sound. "
                     "Off: retain the loop point without repeating. "
-                    "Drag the blue handle to set a tail length. Loop and end "
-                    "handles snap to nearby zero crossings after processing.");
+                    "Drag the blue handle to set a tail length. WAV loop and "
+                    "end handles snap to nearby zero crossings after processing. "
+                    "Imported bank points remain exact.");
     loop.onClick = [this] {
       edit([](auto &pad) { pad.loopEnabled = !pad.loopEnabled; });
     };
@@ -564,6 +567,7 @@ public:
       sp::clearKit(project);
       ++kitSession;
       savedKitName.clear();
+      documentFileName.clear();
       selected = 0;
       pool.deselectAllRows();
       changed();
@@ -578,6 +582,7 @@ public:
     tune.setTooltip(
         "On: fit long samples using pitch compensation; select up to 6.27 s.\n"
         "Off: keep neutral pitch; select up to 2.5 s.\n"
+        "Saved tuning from imported banks is retained.\n"
         "Switching resets automatic selections; manual cuts stay protected.");
     sort.onClick = [this] {
       if (busy)
@@ -764,12 +769,13 @@ public:
     sp::retainMappedAssignment(project, selected);
     changed({}, keepLoopPlaying);
   }
-  void changed(String completionNote = {}, bool keepLoopPlaying = false) {
+  void changed(String completionNote = {}, bool keepLoopPlaying = false,
+               bool markDirty = true) {
     sp::syncAutoMapRestore(project);
     if (preferences && !preferences->save(project))
       error("Could not save app settings. Check available disk space and "
             "permissions.");
-    dirty = true;
+    dirty = markDirty;
     const bool continuing = keepLoopPlaying && isLoopPlaying(selected);
     const int auditionPad = selected;
     if (continuing)
@@ -916,7 +922,8 @@ public:
         StringArray warnings;
         auto p = snapshot;
         if (preset)
-          p = sp::loadPreset(File(paths[0]));
+          p = kitFile.hasFileExtension("sp12") ? sp::loadBank(kitFile)
+                                               : sp::loadPreset(kitFile);
         else {
           auto incoming = sp::importFiles(paths, warnings, false);
           if (p.pool.empty())
@@ -932,14 +939,14 @@ public:
               if (preset) {
                 ++safe->kitSession;
                 safe->savedKitName = kitFile.getFileNameWithoutExtension();
+                safe->documentFileName = kitFile.getFileName();
                 safe->selected = 0;
               }
               const auto note =
                   warnings.isEmpty()
                       ? String()
                       : "  |  " + String(warnings.size()) + " files skipped";
-              safe->changed(note);
-              safe->dirty = !preset;
+              safe->changed(note, false, !preset);
             });
       } catch (const std::exception &e) {
         String message = e.what();
@@ -967,7 +974,7 @@ public:
         });
   }
   void chooseOpen() {
-    chooser = std::make_unique<FileChooser>("Open Kit", File(), "*.spkit");
+    chooser = std::make_unique<FileChooser>("Open Kit or Bank", File(), "*.spkit;*.sp12");
     chooser->launchAsync(
         FileBrowserComponent::openMode | FileBrowserComponent::canSelectFiles,
         [safe = Component::SafePointer<MainView>(this)](const FileChooser &c) {
@@ -987,6 +994,7 @@ public:
     if (kitSession != savedSession)
       return;
     savedKitName = file.getFileNameWithoutExtension();
+    documentFileName = file.getFileName();
     if (generation == savedVersion)
       dirty = false;
     refresh();
@@ -1099,7 +1107,7 @@ public:
   }
   bool isInterestedInFileDrag(const StringArray &) override { return true; }
   void filesDropped(const StringArray &files, int, int) override {
-    if (files.size() == 1 && File(files[0]).hasFileExtension("spkit"))
+    if (files.size() == 1 && File(files[0]).hasFileExtension("spkit;sp12"))
       load(files, true);
     else
       load(files);
@@ -1409,6 +1417,16 @@ public:
     changed();
   }
   void refresh() {
+    if (auto *window = findParentComponentOfClass<DocumentWindow>()) {
+      const String appName("SP-1200 Bank Creator");
+      auto title = documentFileName.isEmpty()
+                       ? appName
+                       : appName + String::fromUTF8(" — ") + documentFileName;
+      if (dirty)
+        title += " *";
+      if (window->getName() != title)
+        window->setName(title);
+    }
     updateStopButton();
     updating = true;
     updatePoolFilter();
@@ -1883,7 +1901,7 @@ public:
       info.addDefaultKeypress('i', modifier);
       break;
     case openPreset:
-      info.setInfo(String::fromUTF8("Open Kit…"), "Open a portable kit", "File",
+      info.setInfo(String::fromUTF8("Open Kit or Bank…"), "Open a kit or SP-1200 bank", "File",
                    0);
       info.addDefaultKeypress('o', modifier);
       break;
@@ -1988,7 +2006,7 @@ class App : public JUCEApplication {
     const auto paths = StringArray::fromTokens(args, true);
     for (const auto &path : paths) {
       const File file(File::getCurrentWorkingDirectory().getChildFile(path.unquoted()));
-      if (file.hasFileExtension("spkit"))
+      if (file.hasFileExtension("spkit;sp12"))
         pendingKitPath = file.getFullPathName();
     }
     if (window && pendingKitPath.isNotEmpty()) {
@@ -2038,11 +2056,16 @@ public:
         if (code)
           finish(code);
         else
-          testKitFilenameUi(view, [&view, finish](int namesCode) {
-            if (namesCode)
-              finish(namesCode);
+          testNativeBankUi(view, [&view, finish](int bankCode) {
+            if (bankCode)
+              finish(bankCode);
             else
-              testMemoryPlayback(view, finish);
+              testKitFilenameUi(view, [&view, finish](int namesCode) {
+                if (namesCode)
+                  finish(namesCode);
+                else
+                  testMemoryPlayback(view, finish);
+              });
           });
       });
     }

@@ -1745,6 +1745,73 @@ struct PoolSearchUiTest : std::enable_shared_from_this<PoolSearchUiTest> {
 static void testPoolSearch(MainView &view, std::function<void(int)> finish) {
   std::make_shared<PoolSearchUiTest>(view, std::move(finish))->run();
 }
+static bool hasDocumentTitle(MainView &view, const String &filename = {},
+                             bool unsaved = false) {
+  const auto *window = view.findParentComponentOfClass<DocumentWindow>();
+  const String appName("SP-1200 Bank Creator");
+  const auto title = filename.isEmpty()
+                         ? appName : appName + String::fromUTF8(" — ") + filename;
+  return window && window->getName() == title + (unsaved ? " *" : "");
+}
+static void testNativeBankUi(MainView &view, std::function<void(int)> finish) {
+  const auto dir = File::getSpecialLocation(File::tempDirectory)
+                       .getChildFile("sp-native-ui-" + Uuid().toString());
+  dir.createDirectory();
+  const auto file = dir.getChildFile(String::fromUTF8("Native Bank Ä.SP12"));
+  MemoryBlock bytes;
+  File(__FILE__).getParentDirectory().getChildFile("fixtures/codec32.sp12")
+      .loadFileAsData(bytes);
+  sp::atomicWrite(file, bytes);
+  JUCEApplication::getInstance()->anotherInstanceStarted(file.getFullPathName().quoted());
+  afterPreviewJobs(view, [&view, dir, bytes, finish] {
+    afterPreviewJobs(view, [&view, dir, bytes, finish] {
+      bool ok = view.project.originalBank && *view.project.originalBank == bytes &&
+                view.project.pool.size() == 32 && view.canSave(true) &&
+                view.savedKitName == String::fromUTF8("Native Bank Ä") &&
+                hasDocumentTitle(view, String::fromUTF8("Native Bank Ä.SP12")) &&
+                !view.dirty && !view.busy && !view.project.autoTune &&
+                !view.project.autoSort && !view.project.autoTrim &&
+                !view.project.normalizeOnExport && !view.project.fadeOutOnExport;
+      if (!ok) {
+        std::cerr << "FAIL: native macOS bank open UI\n";
+        dir.deleteRecursively();
+        finish(1);
+        return;
+      }
+      view.select(0);
+      afterPreviewJobs(view, [&view, dir, bytes, finish] {
+        bool played = view.active && view.playingPad == 0 &&
+            std::abs(view.playbackFramesPerSecond - sp::rate * sp::pitchRatio(0)) < 1e-8;
+        view.checkpoint();
+        view.project.pads[0].name = "EDITED";
+        view.changed();
+        played &= view.dirty &&
+                  hasDocumentTitle(view, String::fromUTF8("Native Bank Ä.SP12"), true);
+        afterPreviewJobs(view, [&view, dir, bytes, finish, played] {
+          view.undoEdit();
+          afterPreviewJobs(view, [&view, dir, bytes, finish, played] {
+            const bool restored = played && sp::process(view.project).bank == bytes &&
+                hasDocumentTitle(view, String::fromUTF8("Native Bank Ä.SP12"), true);
+            view.stopAudio();
+            view.project = sp::Project{};
+            view.savedKitName.clear();
+            view.documentFileName.clear();
+            view.dirty = false;
+            view.past.clear();
+            view.future.clear();
+            view.result.reset();
+            view.currentPlan.reset();
+            view.refresh();
+            dir.deleteRecursively();
+            std::cout << (restored ? "PASS" : "FAIL")
+                      << ": native bank UI open, filename/unsaved title, Unicode/uppercase extension, tuning, preservation defaults and Undo\n";
+            finish(restored ? 0 : 1);
+          });
+        });
+      });
+    });
+  });
+}
 static void testKitFilenameUi(MainView &view, std::function<void(int)> finish) {
   const auto dir = File::getSpecialLocation(File::tempDirectory)
                        .getChildFile("sp-kit-names-" + Uuid().toString());
@@ -1753,22 +1820,30 @@ static void testKitFilenameUi(MainView &view, std::function<void(int)> finish) {
   view.project = sp::Project{};
   view.project.bankName = "Imported Folder";
   view.savedKitName.clear();
+  view.documentFileName.clear();
+  view.dirty = false;
   view.refresh();
   const auto version = view.generation.load();
   const auto session = view.kitSession;
-  bool ok = view.suggestedFileStem(true) == "Imported Folder";
+  bool ok = view.suggestedFileStem(true) == "Imported Folder" && hasDocumentTitle(view);
   sp::savePreset(view.project, file);
+  view.dirty = true;
+  view.refresh();
+  ok &= hasDocumentTitle(view, {}, true);
   view.rememberSavedKit(file, version, session);
   ok &= view.suggestedFileStem(true) == "Opened Kit Ae" &&
         view.suggestedFileStem(false) == "Imported Folder" &&
-        view.clearAll.isEnabled() && !view.dirty;
+        view.clearAll.isEnabled() && !view.dirty &&
+        hasDocumentTitle(view, String::fromUTF8("Opened Kit Ä.spkit"));
   view.dirty = true;
   ++view.generation;
   view.rememberSavedKit(dir.getChildFile("Save As Kit.spkit"), version, session);
-  ok &= view.suggestedFileStem(true) == "Save As Kit" && view.dirty;
+  ok &= view.suggestedFileStem(true) == "Save As Kit" && view.dirty &&
+        hasDocumentTitle(view, "Save As Kit.spkit", true);
   view.clearAll.onClick();
   view.rememberSavedKit(file, version, session);
-  ok &= view.savedKitName.isEmpty() && view.suggestedFileStem(true) == "KIT";
+  ok &= view.savedKitName.isEmpty() && view.suggestedFileStem(true) == "KIT" &&
+        hasDocumentTitle(view, {}, true);
   if (!ok) {
     std::cerr << "FAIL: export filename suggestions or Clear All reset\n";
     dir.deleteRecursively();
@@ -1785,9 +1860,11 @@ static void testKitFilenameUi(MainView &view, std::function<void(int)> finish) {
         const bool loaded = view.savedKitName == String::fromUTF8("Opened Kit Ä") &&
                             view.project.bankName == "Imported Folder" &&
                             view.suggestedFileStem(true) == "Opened Kit Ae" &&
+                            hasDocumentTitle(view, String::fromUTF8("Opened Kit Ä.spkit")) &&
                             !view.dirty && !view.busy;
         view.project = sp::Project{};
         view.savedKitName.clear();
+        view.documentFileName.clear();
         ++view.kitSession;
         view.past.clear();
         view.future.clear();
@@ -1798,7 +1875,7 @@ static void testKitFilenameUi(MainView &view, std::function<void(int)> finish) {
         std::cout << (loaded ? "PASS" : "FAIL")
                   << ": macOS kit open events with spaces and Unicode, "
                      "saved/opened kit export names, Save As, stale saves "
-                     "and Clear All on an empty saved kit\n";
+                     "and window titles after open/save/Clear All\n";
         finish(loaded ? 0 : 1);
       });
     });

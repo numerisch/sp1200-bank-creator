@@ -1149,6 +1149,7 @@ static void testLoops(const File &hardwareOutput = {}) {
   }
   dir.deleteRecursively();
 }
+#include "BankImportTests.h"
 int main(int argc, char **argv) {
   ScopedJuceInitialiser_GUI init;
   if (argc == 2 && String(argv[1]) == "--benchmark-loops") {
@@ -1158,6 +1159,12 @@ int main(int argc, char **argv) {
   if (argc == 2 && String(argv[1]) == "--audit-instruments")
     return auditInstrumentNames(false);
   try {
+    if (argc >= 3 && String(argv[1]) == "--audit-banks") {
+      for (int i = 2; i < argc; ++i)
+        bankTests::audit(File(argv[i]));
+      return 0;
+    }
+    bankTests::run(argc == 2 ? File(argv[1]) : File());
     testDrumInstrumentAliases();
     testMirroredAutoMap();
     testReversibleAutoMap();
@@ -1918,7 +1925,7 @@ int main(int argc, char **argv) {
           "Empty version 7 presets roundtrip");
     manifest.getDynamicObject()->removeProperty("fadeOutOnExport");
     manifest.getDynamicObject()->removeProperty("normalizeOnExport");
-    for (int version : {7, 1, 2, 3, 4, 5, 6, 8}) {
+    for (int version : {7, 8, 1, 2, 3, 4, 5, 6, 9}) {
       manifest.getDynamicObject()->setProperty("version", version);
       const auto legacyJson = JSON::toString(manifest);
       ZipFile::Builder legacyZip;
@@ -1930,7 +1937,7 @@ int main(int argc, char **argv) {
       check(legacyZip.writeToStream(legacyBytes, nullptr),
             "Create preset version fixture");
       sp::atomicWrite(legacyPreset, legacyBytes.getMemoryBlock());
-      if (version == 7) {
+      if (version == 7 || version == 8) {
         const auto compatible = sp::loadPreset(legacyPreset);
         check(!compatible.fadeOutOnExport && compatible.normalizeOnExport,
               "Version 7 kits without export flags use Fade Off/Normalize On");

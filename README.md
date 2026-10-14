@@ -16,13 +16,19 @@ support Apple Silicon and Intel.
 - Optional silence trimming, pitch fitting, normalization and one-shot fades.
 - Save portable `.spkit` projects containing the original samples and settings.
 - Open `.spkit` kits from Finder or by dropping them onto the macOS Dock icon.
+- Open app- or Rossum-saved `.sp12` banks, preserving stored sounds, shared
+  sample memory, tuning, loops, sequences and device settings.
 - Export Rossum `.sp12` banks, with memory and sample-length validation.
 
 The app preserves original samples. Undo/Redo includes assignments and edits.
 The embedded guide under **Help > SP-1200 Bank Creator Help** explains controls,
 shortcuts and defaults. **Help > License** displays the full AGPLv3 license.
 
-Export targets Rossum `.sp12` banks. Importing `.sp12`, HFE/floppy export, MIDI
+Import/export targets the 824,546-byte Rossum `.sp12` format. Unchanged imported
+banks export byte-identically; portable format-8 kits retain the original bank.
+Format-7 kits remain readable. Original source WAVs and unexported pool sounds
+cannot be recovered from a bank. Hardware mix/decay settings are retained but
+are not emulated in preview. HFE/floppy export, MIDI
 transfer, sequencer editing and analog output-filter emulation are not included.
 
 ## Download

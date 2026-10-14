@@ -12,11 +12,13 @@
 #include <vector>
 namespace sp {
 constexpr int rate = 26040, maxFrames = 65088;
+struct NativeSound;
 struct Asset {
   juce::String id, filename, relative, category;
   juce::MemoryBlock original;
   juce::AudioBuffer<float> audio;
   double sampleRate = 44100;
+  std::shared_ptr<const NativeSound> native;
 };
 struct Pad {
   juce::String asset, name, assignmentId;
@@ -34,6 +36,8 @@ struct AutoMapState {
   juce::StringArray transient;
 };
 struct Project {
+  // Immutable source image also retains sequence and device data we do not edit.
+  std::shared_ptr<const juce::MemoryBlock> originalBank;
   juce::String bankName;
   double threshold = -40;
   bool autoTune = true;
@@ -153,6 +157,8 @@ Render renderPadPreview(const Project &, int padIndex);
 juce::MemoryBlock buildBank(const Project &, const std::array<Render, 32> &,
                             std::array<int, 8> &);
 void validateBank(const juce::MemoryBlock &);
+Project readBank(const juce::MemoryBlock &, juce::String bankName);
+Project loadBank(const juce::File &);
 void savePreset(const Project &, const juce::File &, const Result * = nullptr);
 Project loadPreset(const juce::File &);
 void atomicWrite(const juce::File &, const juce::MemoryBlock &);

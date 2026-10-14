@@ -2,6 +2,7 @@
 // Copyright © 2026 Numerisch GmbH
 
 #include "Core.h"
+#include "NativeBank.h"
 #include "BinaryData.h"
 #include <algorithm>
 #include <cmath>
@@ -180,6 +181,8 @@ double maxSelectionDuration(double sampleRate, bool autoTune) {
   return maxSelectionFrames(sampleRate, autoTune) / sampleRate;
 }
 bool exceedsSampleDuration(const Asset &asset, bool autoTune) {
+  if (asset.native)
+    return false; // Native allocation validity was checked when opening.
   return asset.audio.getNumSamples() >
          maxSelectionFrames(asset.sampleRate, autoTune);
 }
@@ -190,7 +193,8 @@ static void resetTrimBounds(const Project &p, Pad &pad) {
     if (const auto asset = assetFor(p, pad.asset)) {
       pad.start = 0;
       pad.end = std::min(asset->audio.getNumSamples() / asset->sampleRate,
-                         maxSelectionDuration(asset->sampleRate, p.autoTune));
+                         asset->native ? 65524. / asset->sampleRate
+                                       : maxSelectionDuration(asset->sampleRate, p.autoTune));
     }
 }
 void resetTrim(Project &p, int index) {
@@ -224,7 +228,7 @@ double clampTrimPosition(const Asset &a, bool isStart, double requestedTime,
       std::clamp((int)std::llround(oppositeBoundary * a.sampleRate),
                  isStart ? 1 : 0, isStart ? n : n - 1);
   const int requested = (int)std::llround(requestedTime * a.sampleRate);
-  const int maximum = maxSelectionFrames(a.sampleRate, autoTune);
+  const int maximum = a.native ? 65524 : maxSelectionFrames(a.sampleRate, autoTune);
   const int low = isStart ? std::max(0, anchor - maximum) : anchor + 1;
   const int high = isStart ? anchor - 1 : std::min(n, anchor + maximum);
   return std::clamp(requested, low, high) / a.sampleRate;
@@ -244,6 +248,17 @@ Pad makePad(const Asset &a, int padIndex, bool autoTrim, bool autoTune) {
   Pad p;
   p.assignmentId = Uuid().toString();
   p.asset = a.id;
+  if (a.native) {
+    const auto &n = *a.native;
+    p.name = n.name;
+    p.channel = (n.flags & 7) + 1;
+    p.manualTrim = true;
+    p.start = n.start();
+    p.end = n.end();
+    p.loopEnabled = n.loopFrames > 0;
+    p.loopSeconds = n.loopFrames > 0 ? n.loopSeconds() : -1;
+    return p;
+  }
   p.name = a.filename.upToFirstOccurrenceOf(".", false, false)
                .toUpperCase()
                .retainCharacters("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ")
@@ -645,17 +660,19 @@ std::array<Render, 32> selectionMetadata(const Project &p) {
     if (!a)
       continue;
     auto &r = metadata[i];
+    if (a->native)
+      r.tune = a->native->playbackTune();
     auto x = mono(*a, r.left);
     if (p.pads[i].reverse)
       std::reverse(x.begin(), x.end());
     const auto [b, e] = trimRange(p, p.pads[i], x, a->sampleRate);
     r.start = b / a->sampleRate;
     r.end = e / a->sampleRate;
-    while (p.autoTune && r.tune > 0 &&
+    while (!a->native && p.autoTune && r.tune > 0 &&
            std::ceil((e - b) * double(rate) / a->sampleRate *
                      pitchRatio(r.tune)) > maxFrames)
       --r.tune;
-    if (p.autoTrim && !p.pads[i].manualTrim)
+    if (!a->native && p.autoTrim && !p.pads[i].manualTrim)
       r.removed = std::max(
           0., r.end - r.start - maxFrames / double(rate) / pitchRatio(r.tune));
   }
@@ -742,6 +759,8 @@ static ProcessingPlan planAudio(const Project &p, bool preview) {
     auto a = assetFor(p, p.pads[i].asset);
     need(a != nullptr, "Missing sample");
     auto &r = out.sounds[i];
+    if (a->native)
+      r.tune = a->native->playbackTune();
     auto x = mono(*a, r.left);
     if (p.pads[i].reverse)
       std::reverse(x.begin(), x.end());
@@ -753,19 +772,24 @@ static ProcessingPlan planAudio(const Project &p, bool preview) {
     r.end = e / rates[i];
     // Auditioning a pad is independent of bank capacity. Keep manual cuts,
     // including protected selections beyond the current slot limit.
+    const int capacity = a->native ? (retainNativeAudio(p, p.pads[i], *a)
+                                         ? 65535 : 65524) : maxFrames;
     caps[i] = preview && (!p.autoTrim || p.pads[i].manualTrim)
                   ? std::numeric_limits<int>::max()
-                  : maxFrames;
-    while (p.autoTune && r.tune > 0 &&
-           std::ceil((e - b) * double(rate) / rates[i] * pitchRatio(r.tune)) >
-               maxFrames)
+                  : capacity;
+    const auto frameCount = [&](int tune) {
+      const double ratio = rate / rates[i] * pitchRatio(tune);
+      return a->native && std::abs(ratio - 1.) < 1e-12
+                 ? double(e - b)
+                 : std::ceil((e - b) * double(rate) / rates[i] * pitchRatio(tune));
+    };
+    while (p.autoTune && r.tune > 0 && frameCount(r.tune) > capacity)
       --r.tune;
-    const double requested =
-        std::ceil((e - b) * double(rate) / rates[i] * pitchRatio(r.tune));
+    const double requested = frameCount(r.tune);
     oversized[i] =
-        (!p.autoTrim || p.pads[i].manualTrim) && requested > maxFrames;
+        (!p.autoTrim || p.pads[i].manualTrim) && requested > capacity;
     if (oversized[i])
-      sampleExcess += (int64_t)requested - maxFrames;
+      sampleExcess += (int64_t)requested - capacity;
     lengths[i] = (int)std::min(double(caps[i]), requested);
   }
   if (!preview && sampleExcess > 0)
@@ -779,15 +803,22 @@ static ProcessingPlan planAudio(const Project &p, bool preview) {
     auto &r = out.sounds[i];
     // Match the resampler's arithmetic exactly. Reordering floating-point
     // division/multiplication can change ceil by one frame at integral ratios.
-    lengths[i] = std::min(
-        caps[i], (int)std::ceil((end[i] - begin[i]) *
-                                (rate / rates[i] * pitchRatio(r.tune))));
+    const auto asset = assetFor(p, p.pads[i].asset);
+    const double ratio = rate / rates[i] * pitchRatio(r.tune);
+    lengths[i] = std::min(caps[i],
+                         asset->native && std::abs(ratio - 1.) < 1e-12
+                             ? end[i] - begin[i]
+                             : (int)std::ceil((end[i] - begin[i]) * ratio));
     r.removed =
         std::max(0., (end[i] - begin[i]) / rates[i] -
                          lengths[i] / double(rate) / pitchRatio(r.tune));
     r.loopFrames = loopFramesFor(p.pads[i], lengths[i], r.tune);
+    if (const auto a = assetFor(p, p.pads[i].asset); a->native && r.loopFrames > 0)
+      r.loopFrames = std::min(r.loopFrames, std::max(0, lengths[i] - 2));
   }
-  if (!preview && !allocate(lengths, out.used)) {
+  if (!preview && p.originalBank) {
+    out.used = planNativeStorage(p, lengths).used;
+  } else if (!preview && !allocate(lengths, out.used)) {
     std::array<bool, 32> conflicts{};
     allocate(lengths, out.used, &conflicts);
     int64_t required = 0, unplaced = 0;
@@ -820,7 +851,9 @@ static ProcessingPlan planAudio(const Project &p, bool preview) {
 ProcessingPlan planBank(const Project &p) {
   auto plan = planAudio(p, false);
   for (int i = 0; i < 32; ++i)
-    if (plan.sounds[i].loopFrames > 0 && plan.sounds[i].loopFrames < 3) {
+    if ((plan.sounds[i].loopFrames > 0 && plan.sounds[i].loopFrames < 3) ||
+        (p.pads[i].loopEnabled && plan.frames[i] > 0 &&
+         plan.sounds[i].loopFrames == 0)) {
       LoopError error(
           "Loop needs at least 3 stored frames within the selection. "
           "Extend the loop or turn Loop Off to export.");
@@ -873,6 +906,9 @@ static std::vector<double> renderAudio(const Project &p,
     std::reverse(input.begin(), input.end());
   const auto &r = plan.sounds[i];
   const double ratio = rate / a->sampleRate * pitchRatio(r.tune);
+  if (a->native && std::abs(ratio - 1.) < 1e-12)
+    return {input.begin() + plan.begin[i],
+            input.begin() + std::min(plan.end[i], plan.begin[i] + plan.frames[i])};
   auto audio = resample(input, plan.begin[i], plan.end[i], ratio,
                         plan.frames[i], cancel);
 
@@ -884,11 +920,15 @@ static Render finishAudio(const Project &p, int padIndex, Render r,
   if (cancel && cancel())
     throw ProcessingCancelled{};
   const auto &pad = p.pads[padIndex];
+  const auto asset = assetFor(p, pad.asset);
   const int n = (int)audio.size();
   int end = n;
   r.loopFrames = loopFramesFor(pad, n, r.tune);
+  if (asset && asset->native && pad.loopEnabled)
+    r.loopFrames = std::min(r.loopFrames, std::max(0, n - 2));
   if (pad.loopEnabled && r.loopFrames >= 3) {
-    const int radius = (int)std::floor(.005 * rate * pitchRatio(r.tune));
+    const int radius = asset && asset->native
+                           ? 0 : (int)std::floor(.005 * rate * pitchRatio(r.tune));
     end = nearestCrossing(audio, n, 3, n, radius);
     const int requestedStart = std::min(n - r.loopFrames, end - 3);
     // Do not hide an invalid tiny loop by enlarging it, or exceed selection/
@@ -1014,6 +1054,8 @@ void writeLoopDescriptor(MemoryBlock &bank, int padIndex, int frames) {
 }
 MemoryBlock buildBank(const Project &p, const std::array<Render, 32> &sounds,
                       std::array<int, 8> &used) {
+  if (p.originalBank)
+    return buildNativeBank(p, sounds, used);
   MemoryBlock bank(BinaryData::EMPTY__sp12, BinaryData::EMPTY__sp12Size);
   need(bank.getSize() == 824546, "Invalid template size");
   static const bool validTemplate =
@@ -1109,7 +1151,7 @@ void validateBank(const MemoryBlock &bank) {
       continue;
     int d = 0x9262 + s * 10, z = b[d + 1] & 7, p = word(b, d + 2),
         span = word(b, d + 4) ^ 65535;
-    need(start + n <= 65535 && p >= start && p < start + n &&
+    need(span > 0 && start + n <= 65535 && p >= start && p < start + n &&
              p + span <= start + n,
          "Invalid bank allocation");
     const int loopStart = word(b, d + 6);
@@ -1219,7 +1261,7 @@ void savePreset(const Project &source, const File &file, const Result *result) {
   }
   clampAutoMapRestoreLoops(p);
   auto root = object();
-  set(root, "version", 7);
+  set(root, "version", 8);
   set(root, "bankName", p.bankName);
   set(root, "autoTune", p.autoTune);
   set(root, "autoSort", p.autoSort);
@@ -1229,6 +1271,14 @@ void savePreset(const Project &source, const File &file, const Result *result) {
   set(root, "normalizeOnExport", p.normalizeOnExport);
   Array<var> assets, pads;
   ZipFile::Builder zip;
+  if (p.originalBank) {
+    auto sourceBank = object();
+    set(sourceBank, "entry", "source-bank.sp12");
+    set(sourceBank, "sha256", SHA256(*p.originalBank).toHexString());
+    set(root, "sourceBank", sourceBank);
+    zip.addEntry(new MemoryInputStream(*p.originalBank, false), 6,
+                 "source-bank.sp12", Time::getCurrentTime());
+  }
   for (auto a : p.pool) {
     auto v = object();
     String entry = "samples/" + a->id + File(a->filename).getFileExtension();
@@ -1237,6 +1287,10 @@ void savePreset(const Project &source, const File &file, const Result *result) {
     set(v, "relative", a->relative);
     set(v, "entry", entry);
     set(v, "sha256", SHA256(a->original).toHexString());
+    if (a->native) {
+      need(p.originalBank != nullptr, "Native sample has no original bank");
+      set(v, "bankPad", a->native->sourcePad);
+    }
     assets.add(v);
     zip.addEntry(new MemoryInputStream(a->original, false), 6, entry,
                  Time::getCurrentTime());
@@ -1289,12 +1343,30 @@ Project loadPreset(const File &file) {
   need(in != nullptr, "Cannot read manifest");
   auto root = JSON::parse(in->readEntireStreamAsString());
   const int version = (int)root["version"];
-  need(version == 7, "Unsupported preset version (requires version 7)");
+  need(version == 7 || version == 8,
+       "Unsupported preset version (requires version 7 or 8)");
   auto *assets = root["assets"].getArray();
   auto *pads = root["pads"].getArray();
   need(assets && pads && pads->size() == 32, "Invalid preset structure");
   Project p;
   p.bankName = root["bankName"].toString();
+  Project bankSource;
+  if (root.hasProperty("sourceBank")) {
+    need(version == 8, "Original banks require kit format 8");
+    const auto source = root["sourceBank"];
+    const auto entry = source["entry"].toString();
+    const int n = zip.getIndexOfFileName(entry);
+    need(n >= 0 && entry == "source-bank.sp12", "Missing original bank");
+    std::unique_ptr<InputStream> stream(zip.createStreamForEntry(n));
+    need(stream != nullptr, "Cannot read original bank");
+    MemoryBlock bytes;
+    stream->readIntoMemoryBlock(bytes, 824547);
+    need(bytes.getSize() == 824546 &&
+             SHA256(bytes).toHexString() == source["sha256"].toString(),
+         "Original bank size or checksum mismatch");
+    bankSource = readBank(bytes, p.bankName);
+    p.originalBank = bankSource.originalBank;
+  }
   for (auto v : *assets) {
     String id = v["id"], name = v["filename"], entry = v["entry"];
     need(id.isNotEmpty() && !assetFor(p, id), "Duplicate or empty sample ID");
@@ -1306,7 +1378,20 @@ Project loadPreset(const File &file) {
     stream->readIntoMemoryBlock(bytes);
     need(SHA256(bytes).toHexString() == v["sha256"].toString(),
          "Embedded sample checksum mismatch");
-    auto a = decode(bytes, name, v["relative"].toString());
+    std::shared_ptr<Asset> a;
+    if (v.hasProperty("bankPad")) {
+      need(version == 8 && p.originalBank && v["bankPad"].isInt(),
+           "Invalid native sample reference");
+      const int pad = int(v["bankPad"]);
+      need(pad >= 0 && pad < 32, "Invalid native sample pad");
+      const auto sourceAsset = assetFor(bankSource, bankSource.pads[pad].asset);
+      need(sourceAsset && sourceAsset->original == bytes,
+           "Native sample differs from its original bank");
+      a = std::make_shared<Asset>(*sourceAsset);
+      a->filename = name;
+      a->relative = v["relative"].toString();
+    } else
+      a = decode(bytes, name, v["relative"].toString());
     a->id = id;
     p.pool.push_back(a);
   }

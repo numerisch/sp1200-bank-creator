@@ -82,10 +82,19 @@ Both settings also affect preview and are saved in kits. *Pitch Fit*, *Auto Drum
 
 • *Undo*: Cmd+Z. *Redo*: Shift+Cmd+Z.
 • *Save Kit*: Cmd+S. Saves the entire pool, original samples, assignments and settings in a portable .spkit, even when memory is exceeded.
-• *Open Kit*: Cmd+O, drop a .spkit into the app or onto its macOS Dock icon, or double-click it in Finder. Replaces the current kit. Kit format 7 is supported; earlier versions are not migrated.
+• *Open Kit or Bank*: Cmd+O, drop a .spkit or .sp12 into the app or onto its macOS Dock icon, or double-click it in Finder. Replaces the current kit. Kit formats 7 and 8 are supported; earlier versions are not migrated. New kits use format 8.
 • *Export SP-1200 Bank*: Shift+Cmd+E. Prepares and validates all assigned sounds, then writes a Rossum .sp12 bank.
 
 Export suggests the filename of the last successfully saved or opened kit. Before saving a kit, suggested filenames use the first imported folder. Bank filenames use up to 16 ASCII characters, with umlauts converted. Sound names use up to six ASCII characters.
+
+The window title shows SP-1200 Bank Creator followed by the opened .spkit or .sp12 filename, including its extension. A trailing asterisk marks unsaved kit changes. *Save Kit* updates the name and clears the marker after a successful save; opening a kit or bank also clears it. *Clear All* resets the filename. Bank export keeps the document title and unsaved marker.
+
+## Open SP-1200 Banks
+Open .sp12 banks saved by this app or the Rossum SP-1200 (824,546-byte format). Pads, names, outputs, saved tuning, cuts and loops are restored. The pool contains the bank's stored sounds; original WAVs and sounds not exported to the bank cannot be recovered.
+
+Bank imports switch *Pitch Fit*, *Auto Drum Map*, *Auto Trim*, *Normalize* and *Fade Out* Off to preserve the stored audio. Imported cuts are protected. Saved tuning remains active independently of *Pitch Fit*. Imported loop points are not automatically snapped.
+
+Unchanged bank exports are byte-identical. Sequence and other device data are retained on export and in .spkit saves, including after *Clear All*. Sequences keep their pad references when sounds move. Preview does not emulate hardware mix/decay settings or analog filters; those settings remain in the bank.
 
 )HELP";
 } // namespace appInfo
