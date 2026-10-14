@@ -15,6 +15,7 @@ support Apple Silicon and Intel.
 - Edit sample boundaries, reverse, output routing and forward tail loops.
 - Optional silence trimming, pitch fitting, normalization and one-shot fades.
 - Save portable `.spkit` projects containing the original samples and settings.
+- Open `.spkit` kits from Finder or by dropping them onto the macOS Dock icon.
 - Export Rossum `.sp12` banks, with memory and sample-length validation.
 
 The app preserves original samples. Undo/Redo includes assignments and edits.

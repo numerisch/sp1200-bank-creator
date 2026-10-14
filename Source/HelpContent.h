@@ -82,7 +82,7 @@ Both settings also affect preview and are saved in kits. *Pitch Fit*, *Auto Drum
 
 • *Undo*: Cmd+Z. *Redo*: Shift+Cmd+Z.
 • *Save Kit*: Cmd+S. Saves the entire pool, original samples, assignments and settings in a portable .spkit, even when memory is exceeded.
-• *Open Kit*: Cmd+O. Replaces the current kit. Kit format 7 is supported; earlier versions are not migrated.
+• *Open Kit*: Cmd+O, drop a .spkit into the app or onto its macOS Dock icon, or double-click it in Finder. Replaces the current kit. Kit format 7 is supported; earlier versions are not migrated.
 • *Export SP-1200 Bank*: Shift+Cmd+E. Prepares and validates all assigned sounds, then writes a Rossum .sp12 bank.
 
 Export suggests the filename of the last successfully saved or opened kit. Before saving a kit, suggested filenames use the first imported folder. Bank filenames use up to 16 ASCII characters, with umlauts converted. Sound names use up to six ASCII characters.

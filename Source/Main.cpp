@@ -1983,6 +1983,22 @@ class App : public JUCEApplication {
   spStyle::LookAndFeel theme;
   std::unique_ptr<DocumentWindow> window;
   std::unique_ptr<AppMenu> fileMenu;
+  String pendingKitPath;
+  void openKitFromCommandLine(const String &args) {
+    const auto paths = StringArray::fromTokens(args, true);
+    for (const auto &path : paths) {
+      const File file(File::getCurrentWorkingDirectory().getChildFile(path.unquoted()));
+      if (file.hasFileExtension("spkit"))
+        pendingKitPath = file.getFullPathName();
+    }
+    if (window && pendingKitPath.isNotEmpty()) {
+      auto path = pendingKitPath;
+      pendingKitPath.clear();
+      static_cast<MainView *>(window->getContentComponent())->load({path}, true);
+      window->setVisible(true);
+      window->toFront(true);
+    }
+  }
   struct Window : DocumentWindow {
     explicit Window(bool silent = false)
         : DocumentWindow("SP-1200 Bank Creator", spStyle::shell,
@@ -2011,6 +2027,7 @@ public:
         *static_cast<MainView *>(window->getContentComponent()));
     const auto appMenu = fileMenu->getApplicationMenu();
     MenuBarModel::setMacMainMenu(fileMenu.get(), &appMenu);
+    openKitFromCommandLine(args);
     if (playbackTest) {
       auto &view = *static_cast<MainView *>(window->getContentComponent());
       auto finish = [this](int code) {
@@ -2041,6 +2058,11 @@ public:
           ApplicationCommandTarget::InvocationInfo(AppMenu::showLicense));
       Timer::callAfterDelay(200, [] { JUCEApplication::quit(); });
     }
+  }
+  void anotherInstanceStarted(const String &args) override {
+    // JUCE delivers Finder and Dock open-document events here, including
+    // events received before the main window has been created.
+    openKitFromCommandLine(args);
   }
   void systemRequestedQuit() override {
     auto *view = dynamic_cast<MainView *>(window->getContentComponent());

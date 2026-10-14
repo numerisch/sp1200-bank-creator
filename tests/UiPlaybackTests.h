@@ -1749,7 +1749,7 @@ static void testKitFilenameUi(MainView &view, std::function<void(int)> finish) {
   const auto dir = File::getSpecialLocation(File::tempDirectory)
                        .getChildFile("sp-kit-names-" + Uuid().toString());
   dir.createDirectory();
-  const auto file = dir.getChildFile("Opened Kit.spkit");
+  const auto file = dir.getChildFile(String::fromUTF8("Opened Kit Ä.spkit"));
   view.project = sp::Project{};
   view.project.bankName = "Imported Folder";
   view.savedKitName.clear();
@@ -1759,7 +1759,7 @@ static void testKitFilenameUi(MainView &view, std::function<void(int)> finish) {
   bool ok = view.suggestedFileStem(true) == "Imported Folder";
   sp::savePreset(view.project, file);
   view.rememberSavedKit(file, version, session);
-  ok &= view.suggestedFileStem(true) == "Opened Kit" &&
+  ok &= view.suggestedFileStem(true) == "Opened Kit Ae" &&
         view.suggestedFileStem(false) == "Imported Folder" &&
         view.clearAll.isEnabled() && !view.dirty;
   view.dirty = true;
@@ -1776,13 +1776,15 @@ static void testKitFilenameUi(MainView &view, std::function<void(int)> finish) {
     return;
   }
   afterPreviewJobs(view, [&view, file, dir, finish] {
-    view.load({file.getFullPathName()}, true);
+    // This is JUCE's entry point for Finder and Dock open-document events.
+    JUCEApplication::getInstance()->anotherInstanceStarted(
+        file.getFullPathName().quoted());
     afterPreviewJobs(view, [&view, dir, finish] {
       // Loading posts a message which starts a separate processing job.
       afterPreviewJobs(view, [&view, dir, finish] {
-        const bool loaded = view.savedKitName == "Opened Kit" &&
+        const bool loaded = view.savedKitName == String::fromUTF8("Opened Kit Ä") &&
                             view.project.bankName == "Imported Folder" &&
-                            view.suggestedFileStem(true) == "Opened Kit" &&
+                            view.suggestedFileStem(true) == "Opened Kit Ae" &&
                             !view.dirty && !view.busy;
         view.project = sp::Project{};
         view.savedKitName.clear();
@@ -1794,7 +1796,8 @@ static void testKitFilenameUi(MainView &view, std::function<void(int)> finish) {
         view.refresh();
         dir.deleteRecursively();
         std::cout << (loaded ? "PASS" : "FAIL")
-                  << ": saved/opened kit export names, Save As, stale saves "
+                  << ": macOS kit open events with spaces and Unicode, "
+                     "saved/opened kit export names, Save As, stale saves "
                      "and Clear All on an empty saved kit\n";
         finish(loaded ? 0 : 1);
       });
